@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --umbra-black:     #080808;
+  --umbra-gold:      #c5a46c;
+  --umbra-text:      #ece8e0;
+  --umbra-muted:     #5a5a5a;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background: var(--umbra-black);
+  color: var(--umbra-text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(197, 164, 108, 0.2);
+  color: #ece8e0;
+}
+
+::-webkit-scrollbar        { width: 3px; }
+::-webkit-scrollbar-track  { background: #080808; }
+::-webkit-scrollbar-thumb  { background: #2a2a2a; border-radius: 2px; }
+
+/* Animations — fill mode */
+.animate-fade-in,
+.animate-fade-up,
+.animate-line-grow {
+  animation-fill-mode: forwards !important;
+}
+
+/* Ambient orb */
+.umbra-orb {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Form inputs */
+.umbra-input {
+  width: 100%;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(197,164,108,0.12);
+  color: #ece8e0;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  padding: 0.875rem 1rem;
+  border-radius: 2px;
+  transition: border-color 0.35s ease, background 0.35s ease, box-shadow 0.35s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.umbra-input:focus {
+  outline: none;
+  border-color: rgba(197,164,108,0.35);
+  background: rgba(255,255,255,0.04);
+  box-shadow: 0 0 0 1px rgba(197,164,108,0.08);
+}
+
+.umbra-input::placeholder { color: rgba(255,255,255,0.18); }
+.umbra-input option        { background: #111; color: #ece8e0; }
+
+/* Gold hairline */
+.gold-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(197,164,108,0.4), transparent);
+  transform-origin: left;
+}
