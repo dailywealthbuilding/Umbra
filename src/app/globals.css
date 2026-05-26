@@ -3,10 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --umbra-black:     #080808;
-  --umbra-gold:      #c5a46c;
-  --umbra-text:      #ece8e0;
-  --umbra-muted:     #5a5a5a;
+  --umbra-black:  #060606;
+  --umbra-gold:   #c5a46c;
+  --umbra-text:   #ece8e0;
+  --umbra-muted:  #444;
+  --umbra-border: rgba(197,164,108,0.15);
 }
 
 *, *::before, *::after {
@@ -23,59 +24,129 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Selection */
 ::selection {
-  background: rgba(197, 164, 108, 0.2);
+  background: rgba(197,164,108,0.22);
   color: #ece8e0;
 }
 
-::-webkit-scrollbar        { width: 3px; }
-::-webkit-scrollbar-track  { background: #080808; }
-::-webkit-scrollbar-thumb  { background: #2a2a2a; border-radius: 2px; }
+/* Scrollbar */
+::-webkit-scrollbar        { width: 2px; }
+::-webkit-scrollbar-track  { background: #060606; }
+::-webkit-scrollbar-thumb  { background: rgba(197,164,108,0.25); border-radius: 1px; }
 
-/* Animations — fill mode */
-.animate-fade-in,
-.animate-fade-up,
-.animate-line-grow {
-  animation-fill-mode: forwards !important;
+/* ── Typography Utilities ── */
+.umbra-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.5em;
+  color: rgba(197,164,108,0.5);
+  text-transform: uppercase;
+  animation-fill-mode: forwards;
 }
 
-/* Ambient orb */
-.umbra-orb {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  will-change: transform;
+/* ── Card / Glass Panel ── */
+.umbra-card {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(197,164,108,0.14);
+  border-radius: 3px;
+  padding: 1.5rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 0 1px rgba(197,164,108,0.04),
+    0 40px 80px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-/* Form inputs */
+/* ── Input ── */
 .umbra-input {
   width: 100%;
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(197,164,108,0.12);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(197,164,108,0.1);
   color: #ece8e0;
   font-family: var(--font-body);
-  font-size: 0.8125rem;
+  font-size: 0.8rem;
   letter-spacing: 0.02em;
-  padding: 0.875rem 1rem;
+  padding: 0.85rem 1rem;
   border-radius: 2px;
-  transition: border-color 0.35s ease, background 0.35s ease, box-shadow 0.35s ease;
+  transition: border-color 0.3s, background 0.3s, box-shadow 0.3s;
   -webkit-appearance: none;
   appearance: none;
+  outline: none;
 }
 
 .umbra-input:focus {
-  outline: none;
-  border-color: rgba(197,164,108,0.35);
-  background: rgba(255,255,255,0.04);
-  box-shadow: 0 0 0 1px rgba(197,164,108,0.08);
+  border-color: rgba(197,164,108,0.4);
+  background: rgba(197,164,108,0.04);
+  box-shadow: 0 0 0 3px rgba(197,164,108,0.06), 0 0 20px rgba(197,164,108,0.05);
 }
 
 .umbra-input::placeholder { color: rgba(255,255,255,0.18); }
 .umbra-input option        { background: #111; color: #ece8e0; }
 
-/* Gold hairline */
-.gold-line {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(197,164,108,0.4), transparent);
-  transform-origin: left;
+/* ── Button ── */
+.umbra-btn {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 1rem 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: rgba(197,164,108,0.9);
+  background: rgba(197,164,108,0.04);
+  border: 1px solid rgba(197,164,108,0.35);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.35s ease;
+}
+
+.umbra-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(197,164,108,0.1) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.umbra-btn:hover {
+  background: rgba(197,164,108,0.09);
+  border-color: rgba(197,164,108,0.6);
+  color: #c5a46c;
+  box-shadow: 0 0 30px rgba(197,164,108,0.12), 0 0 60px rgba(197,164,108,0.06);
+}
+
+.umbra-btn:hover::before { opacity: 1; }
+
+.umbra-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lineGrow {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+.animate-fade-in  { animation: fadeIn  1.2s ease forwards; }
+.animate-fade-up  { animation: fadeUp  1s ease forwards; }
+.animate-line-grow {
+  animation: lineGrow 1.2s ease forwards;
+  transform-origin: center;
 }
