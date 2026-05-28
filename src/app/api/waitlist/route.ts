@@ -15,8 +15,5 @@ export async function POST(req: Request) {
     const { error } = await sb.from('waitlist').insert({ name: name || null, email, aesthetic_affinity: aesthetic_affinity || null, position })
     if (error) throw error
     return NextResponse.json({ success: true, position }, { status: 201 })
-  } catch(e: unknown) {
-    console.error(e)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
-  }
+  } catch(e: unknown) { console.error(e); return NextResponse.json({ error: 'Server error' }, { status: 500 }) }
 }
