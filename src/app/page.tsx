@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Gallery from "./components/Gallery"
 
 const STYLES = `
 :root {
@@ -709,7 +710,7 @@ export default function Page(){
       {/* ══ STATS BAND ══ */}
       <div className="stats-band sr">
         <div className="stats-inner">
-          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'43+',s:'SHADOW GALLERY ASSETS',d:43,sx:'+'},{t:'24/7',s:'AI CURATION ACTIVE',d:24,sx:'h'},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
+          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'72+',s:'SHADOW GALLERY ASSETS',d:43,sx:'+'},{t:'24/7',s:'SHADOW MEMBERS',d:24,sx:'h'},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
             <div key={item.s} className="stat-item">
               <div className="stat-num" data-target={item.d} data-suffix={item.sx}>{item.t}</div>
               <div className="stat-label">{item.s}</div>
@@ -762,58 +763,10 @@ export default function Page(){
       </section>
 
       {/* ══ GALLERY ══ */}
-      <section className="gallery" id="gallery">
-        <div className="gallery-hdr sr2">
-          <div className="sec-label">The Shadow Gallery</div>
-          <p style={{fontSize:'clamp(13px,1.6vw,16px)',color:'var(--td)',lineHeight:1.9,maxWidth:560,fontWeight:300}}>
-            Aesthetic assets sourced globally — photography, fine art, digital works, and moving image. Every piece interrogated for a single criterion: does it earn its place?
-            <span style={{display:'block',marginTop:8,fontFamily:'var(--font-mono)',fontSize:9,letterSpacing:'.3em',color:'var(--tg)'}}>SHADOW GALLERY · {PHOTOS.length} PHOTOS · {VIDEOS.length} VIDEO CLIPS SHOWN</span>
-          </p>
-        </div>
-        <div className="gallery-grid">
-          {PHOTOS.slice(0,7).map((p,i)=>{
-            const sizes=['s1','s2','s3','s4','s5','s6','s7']
-            return(
-              <div key={p.id} className={`gc ${sizes[i]} sr`} style={{transitionDelay:`${i*.06}s`}}>
-                <img src={GDT(p.id,1280)} alt={p.title} loading="lazy" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'}}/>
-                <div className="gc-meta">
-                  <div className="gc-meta-t">{p.title.toUpperCase()}</div>
-                  <div className="gc-meta-c">{p.cat}</div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        {/* Photos row 2 */}
-        <div className="gallery-grid" style={{marginTop:3}}>
-          {PHOTOS.slice(7,12).map((p,i)=>(
-            <div key={p.id} className={`gc ${i<2?'s3':'s1'} sr`} style={{transitionDelay:`${i*.07}s`}}>
-              <img src={GDT(p.id,1280)} alt={p.title} loading="lazy" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'}}/>
-              <div className="gc-meta">
-                <div className="gc-meta-t">{p.title.toUpperCase()}</div>
-                <div className="gc-meta-c">{p.cat}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        {/* Video strip */}
-        <div className="vid-strip">
-          {VIDEOS.slice(0,3).map((v,i)=>(
-            <div key={v.id} className="vc sr" style={{transitionDelay:`${i*.1}s`}}>
-              <video src={GD(v.id)} autoPlay muted loop playsInline preload="none" onError={(e)=>{(e.target as HTMLVideoElement).style.display='none'}}/>
-              <div className="vc-badge">{v.label}</div>
-            </div>
-          ))}
-        </div>
-        <div className="vid-strip" style={{marginTop:3}}>
-          {VIDEOS.slice(3,6).map((v,i)=>(
-            <div key={v.id} className="vc sr" style={{transitionDelay:`${i*.1}s`}}>
-              <video src={GD(v.id)} autoPlay muted loop playsInline preload="none" onError={(e)=>{(e.target as HTMLVideoElement).style.display='none'}}/>
-              <div className="vc-badge">{v.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      
+        {/* Gallery */}
+        <Gallery />
+
 
       {/* ══ MANIFESTO ══ */}
       <section className="manifesto">
