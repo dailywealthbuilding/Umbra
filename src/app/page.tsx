@@ -339,13 +339,13 @@ const VIDEOS = [
 // Sensory moods
 const MOODS = [
   { q:'silence before storm', bg:'linear-gradient(160deg,#020210,#080820)', acc:'rgba(70,80,220,.5)', dot:'#4850dc', status:'DEEP_INDIGO',
-    cards:[{t:'The Hour Before Rain',c:'Fine Art · Tokyo',bg:'linear-gradient(140deg,#0a0a22,#14143a)'},{t:'Void Architecture II',c:'Architecture · Oslo',bg:'linear-gradient(140deg,#05051a,#0f0f2c)'},{t:'Static & Breath',c:'Abstract · Seoul',bg:'linear-gradient(140deg,#0c0c24,#12122e)'}]},
+    cards:[{t:'The Hour Before Rain',c:'Fine Art · Tokyo',bg:'url(https://drive.google.com/thumbnail?id=10Tzxs021QjZiHl8gcpLDovoxLhf7Yqiw&sz=w400) center/cover no-repeat'},{t:'Void Architecture II',c:'Architecture · Oslo',bg:'url(https://drive.google.com/thumbnail?id=1d2V_DgvJ55E4z-GflKW1V2rIFbbTLiYm&sz=w400) center/cover no-repeat'},{t:'Static & Breath',c:'Abstract · Seoul',bg:'url(https://drive.google.com/thumbnail?id=1cZX0ONwiu-LxTANH3-5oRwspvzX3uA5T&sz=w400) center/cover no-repeat'}]},
   { q:'brutalist tokyo neon', bg:'linear-gradient(160deg,#0b020f,#180520)', acc:'rgba(180,40,220,.5)', dot:'#a030c8', status:'ULTRA_VIOLET',
-    cards:[{t:'Shinjuku After Midnight',c:'Urban · Tokyo',bg:'linear-gradient(140deg,#160520,#0e0318)'},{t:'Concrete Cathedral',c:'Architecture · Osaka',bg:'linear-gradient(140deg,#12031a,#0c040f)'},{t:'Neon Entropy Vol.7',c:'Abstract · Kyoto',bg:'linear-gradient(140deg,#18061e,#100412)'}]},
+    cards:[{t:'Shinjuku After Midnight',c:'Urban · Tokyo',bg:'url(https://drive.google.com/thumbnail?id=1uLr-cxB7a6A-KyfiNFLauLx_46h_J544&sz=w400) center/cover no-repeat'},{t:'Concrete Cathedral',c:'Architecture · Osaka',bg:'url(https://drive.google.com/thumbnail?id=1IY5OOrFQVg2ZeJqk7DdNSVZgT8KBpqe5&sz=w400) center/cover no-repeat'},{t:'Neon Entropy Vol.7',c:'Abstract · Kyoto',bg:'url(https://drive.google.com/thumbnail?id=1Ec3-kwgqbmYeE8Gvmq7jmxH5PO4nRfdw&sz=w400) center/cover no-repeat'}]},
   { q:'wabi-sabi golden dusk', bg:'linear-gradient(160deg,#0f0906,#1e1108)', acc:'rgba(201,168,76,.5)', dot:'#c9a84c', status:'AMBER_DUSK',
-    cards:[{t:'Autumn Impermanence',c:'Nature · Kyoto',bg:'linear-gradient(140deg,#1a0e04,#241508)'},{t:'The Rust Speaks',c:'Still Life · Barcelona',bg:'linear-gradient(140deg,#160c03,#1c1204)'},{t:'Last Light on Stone',c:'Architecture · Tbilisi',bg:'linear-gradient(140deg,#1e1205,#241604)'}]},
+    cards:[{t:'Autumn Impermanence',c:'Nature · Kyoto',bg:'url(https://drive.google.com/thumbnail?id=1RWq2dNH6vdjF0GJ8TVMKRw5LinmnIYBY&sz=w400) center/cover no-repeat'},{t:'The Rust Speaks',c:'Still Life · Barcelona',bg:'url(https://drive.google.com/thumbnail?id=1SSOuHR17oe22ps0QF5xmTeNTTtN5zeNd&sz=w400) center/cover no-repeat'},{t:'Last Light on Stone',c:'Architecture · Tbilisi',bg:'url(https://drive.google.com/thumbnail?id=1JNLVebe-D2fiJCKRoqtBXGuYEG7VUac1&sz=w400) center/cover no-repeat'}]},
   { q:'ghost in the machine', bg:'linear-gradient(160deg,#020c10,#041622)', acc:'rgba(30,190,220,.45)', dot:'#1ebedd', status:'CYAN_GHOST',
-    cards:[{t:'Signal & Noise III',c:'Digital Art · Global',bg:'linear-gradient(140deg,#031018,#041820)'},{t:'Synthetic Memory',c:'Concept · Seoul',bg:'linear-gradient(140deg,#020e18,#031016)'},{t:'Data as Elegy',c:'Mixed Media · Berlin',bg:'linear-gradient(140deg,#041218,#031520)'}]},
+    cards:[{t:'Signal & Noise III',c:'Digital Art · Global',bg:'url(https://drive.google.com/thumbnail?id=1GHCBZL2GS09eYYNlljxtBKph52K31-FR&sz=w400) center/cover no-repeat'},{t:'Synthetic Memory',c:'Concept · Seoul',bg:'url(https://drive.google.com/thumbnail?id=1-eIn-hi8zZRrOWC5Ejq-tjqVn44tTAhw&sz=w400) center/cover no-repeat'},{t:'Data as Elegy',c:'Mixed Media · Berlin',bg:'url(https://drive.google.com/thumbnail?id=1xMqFreZ2vqQj6bvdISqhUKO4iyrP_YcD&sz=w400) center/cover no-repeat'}]},
 ]
 
 const AFFINITIES = [
@@ -475,37 +475,6 @@ function ArchDiagram(){
       <text x="410" y="467" textAnchor="middle" fill="rgba(201,168,76,.6)" fontFamily="Cinzel,serif" fontSize="10" letterSpacing="3">THE WORLD</text>
       <text x="410" y="484" textAnchor="middle" fill="rgba(160,160,190,.5)" fontFamily="Courier Prime,monospace" fontSize="7.5" letterSpacing="1.5">Users · Creators · Subscribers</text>
       <text x="410" y="500" textAnchor="middle" fill="rgba(201,168,76,.22)" fontFamily="Courier Prime,monospace" fontSize="7" letterSpacing="1.5">ACCESS · NOIR · PRESTIGE · OBSIDIAN</text>
-    </svg>
-  )
-}
-
-// ── DNA RADAR CHART ──
-function DNAChart(){
-  const axes=[
-    {label:'SHADOW NOIR',a:-90,v:.88},{label:'WABI-SABI',a:-30,v:.76},
-    {label:'GLOBAL ROOTS',a:30,v:.92},{label:'DIGITAL SUBLIME',a:90,v:.70},
-    {label:'BRUTALIST',a:150,v:.80},{label:'ANCIENT FUTURES',a:210,v:.86},
-  ]
-  const R=110,cx=172,cy=165
-  const xy=(a:number,r:number)=>({x:cx+r*Math.cos(a*Math.PI/180),y:cy+r*Math.sin(a*Math.PI/180)})
-  const pts=axes.map(a=>xy(a.a,a.v*R))
-  const poly=pts.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')+' Z'
-  return(
-    <svg viewBox="0 0 344 330" xmlns="http://www.w3.org/2000/svg" style={{width:'100%',maxWidth:344,height:'auto'}}>
-      <defs><radialGradient id="rfill" cx="50%" cy="50%"><stop offset="0%" stopColor="rgba(201,168,76,.22)"/><stop offset="100%" stopColor="rgba(201,168,76,.04)"/></radialGradient></defs>
-      {[.25,.5,.75,1].map((r,i)=>{const rp=axes.map((a,j)=>{const p=xy(a.a,r*R);return`${j===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`}).join(' ')+' Z';return <path key={i} d={rp} fill="none" stroke="rgba(201,168,76,.07)" strokeWidth="1"/>})}
-      {axes.map((a,i)=>{const e=xy(a.a,R);return<line key={i} x1={cx} y1={cy} x2={e.x.toFixed(1)} y2={e.y.toFixed(1)} stroke="rgba(201,168,76,.09)" strokeWidth="1"/>})}
-      <path d={poly} fill="url(#rfill)" stroke="rgba(201,168,76,.6)" strokeWidth="1.5"><animate attributeName="opacity" values=".65;1;.65" dur="4s" repeatCount="indefinite"/></path>
-      {pts.map((p,i)=>(
-        <circle key={i} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="3.5" fill="rgba(201,168,76,.75)" stroke="rgba(201,168,76,.3)" strokeWidth="1">
-          <animate attributeName="r" values="3;4.5;3" dur={`${3+i*.4}s`} repeatCount="indefinite"/>
-        </circle>
-      ))}
-      {axes.map((a,i)=>{const lp=xy(a.a,R+22);return(
-        <text key={i} x={lp.x.toFixed(1)} y={lp.y.toFixed(1)} textAnchor="middle" dominantBaseline="middle" fill="rgba(180,180,205,.7)" fontFamily="Courier Prime,monospace" fontSize="7.5" letterSpacing="1.2">{a.label}</text>
-      )})}
-      <text x={cx} y={cy-7} textAnchor="middle" fill="rgba(201,168,76,.65)" fontFamily="Cinzel,serif" fontSize="10" letterSpacing="3">UMBRA</text>
-      <text x={cx} y={cy+10} textAnchor="middle" fill="rgba(201,168,76,.28)" fontFamily="Courier Prime,monospace" fontSize="7" letterSpacing="2">DNA</text>
     </svg>
   )
 }
@@ -710,7 +679,7 @@ export default function Page(){
       {/* ══ STATS BAND ══ */}
       <div className="stats-band sr">
         <div className="stats-inner">
-          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'72+',s:'SHADOW GALLERY ASSETS',d:43,sx:'+'},{t:'24/7',s:'SHADOW MEMBERS',d:24,sx:'h'},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
+          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'72+',s:'SHADOW GALLERY ASSETS',d:72,sx:'+'},{t:String(wCount),s:'SHADOW MEMBERS',d:wCount,sx:''},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
             <div key={item.s} className="stat-item">
               <div className="stat-num" data-target={item.d} data-suffix={item.sx}>{item.t}</div>
               <div className="stat-label">{item.s}</div>
@@ -811,7 +780,7 @@ export default function Page(){
                 SHADOW NOIR<br/>WABI-SABI<br/>GLOBAL ROOTS<br/>DIGITAL SUBLIME<br/>BRUTALIST HARMONY<br/>ANCIENT FUTURES<br/>LUMINOUS VOID
               </p>
             </div>
-            <div className="sr" style={{transitionDelay:'.2s'}}><DNAChart/></div>
+            <div className="sr" style={{transitionDelay:'.2s'}}>{/* DNAChart removed */}</div>
           </div>
         </div>
       </section>
