@@ -196,7 +196,7 @@ export async function POST(req: Request) {
 
     if (process.env.RESEND_API_KEY) {
       await resend.emails.send({
-        from:    'UMBRA <noreply@umbra.black>',
+        from:    'UMBRA <onboarding@resend.dev>',
         to:      [email],
         subject,
         html:    buildEmail(name || null, position),
