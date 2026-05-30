@@ -512,7 +512,11 @@ export default function Page(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{
     fetch('/api/waitlist/count').then(r=>r.json()).then(d=>setWCount(d.count||0)).catch(()=>{})
-  },[])let i=0;const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
+  },[])let i=0;
+  const [wCount, setWCount] = useState(0)
+  useEffect(()=>{
+    fetch('/api/waitlist/count').then(r=>r.json()).then(d=>setWCount(d.count||0)).catch(()=>{})
+  },[])const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
 
   // Count
   useEffect(()=>{fetch('/api/waitlist/count').then(r=>r.json()).then(d=>{if(d.count!==undefined)setCount(d.count)}).catch(()=>{})},[])
