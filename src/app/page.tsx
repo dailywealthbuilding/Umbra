@@ -482,6 +482,10 @@ function ArchDiagram(){
 type FStat = 'idle'|'loading'|'success'|'error'
 
 export default function Page(){
+  useEffect(()=>{
+    fetch('/api/waitlist/count')
+      .then(r=>r.json())
+      .catch(()=>{})
   const [bootStep,setBoot]=useState(-1)
   const [wmShow,setWm]=useState(false)
   const [lifted,setLifted]=useState(false)
@@ -504,19 +508,14 @@ export default function Page(){
     ts.push(setTimeout(()=>setWm(true),260+BOOT.length*320))
     ts.push(setTimeout(()=>setLifted(true),260+BOOT.length*320+1500))
     return()=>ts.forEach(clearTimeout)
-  },[])
 
   // Typewriter
   useEffect(()=>{if(!lifted)return;
-  const [wCount, setWCount] = useState(0)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{
-    fetch('/api/waitlist/count').then(r=>r.json()).then(d=>setWCount(d.count||0)).catch(()=>{})
-  },[])let i=0;
-  const [wCount, setWCount] = useState(0)
+  let i=0;
   useEffect(()=>{
-    fetch('/api/waitlist/count').then(r=>r.json()).then(d=>setWCount(d.count||0)).catch(()=>{})
-  },[])const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
+  const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
 
   // Count
   useEffect(()=>{fetch('/api/waitlist/count').then(r=>r.json()).then(d=>{if(d.count!==undefined)setCount(d.count)}).catch(()=>{})},[])
@@ -688,7 +687,7 @@ export default function Page(){
       {/* ══ STATS BAND ══ */}
       <div className="stats-band sr">
         <div className="stats-inner">
-          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'72+',s:'SHADOW GALLERY ASSETS',d:72,sx:'+'},{t:String(wCount),s:'SHADOW MEMBERS',d:wCount,sx:''},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
+          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'72+',s:'SHADOW GALLERY ASSETS',d:72,sx:'+'},{t:'—',s:'SHADOW MEMBERS',d:0,sx:''},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
             <div key={item.s} className="stat-item">
               <div className="stat-num" data-target={item.d} data-suffix={item.sx}>{item.t}</div>
               <div className="stat-label">{item.s}</div>
