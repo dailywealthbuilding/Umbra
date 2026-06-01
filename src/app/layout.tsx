@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     url:         'https://umbra-wine.vercel.app',
     siteName:    'UMBRA',
     images: [{
-      url:    '/og-image.png',
+      url:    '/umbra-og.png',
       width:  1200,
       height: 630,
       alt:    'UMBRA — The world’s most uncompromising aesthetic intelligence',
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     card:        'summary_large_image',
     title:       'UMBRA — Enter the Shadow',
     description: 'In nature: where light ends. In ours: where mediocrity ends.',
-    images:      ['/og-image.png'],
+    images:      ['/umbra-og.png'],
   },
 }
 export default function RootLayout({ children }: { children: React.ReactNode }) {
