@@ -482,10 +482,6 @@ function ArchDiagram(){
 type FStat = 'idle'|'loading'|'success'|'error'
 
 export default function Page(){
-  useEffect(()=>{
-    fetch('/api/waitlist/count')
-      .then(r=>r.json())
-      .catch(()=>{})
   const [bootStep,setBoot]=useState(-1)
   const [wmShow,setWm]=useState(false)
   const [lifted,setLifted]=useState(false)
@@ -508,14 +504,10 @@ export default function Page(){
     ts.push(setTimeout(()=>setWm(true),260+BOOT.length*320))
     ts.push(setTimeout(()=>setLifted(true),260+BOOT.length*320+1500))
     return()=>ts.forEach(clearTimeout)
+  },[])
 
   // Typewriter
-  useEffect(()=>{if(!lifted)return;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(()=>{
-  let i=0;
-  useEffect(()=>{
-  const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
+  useEffect(()=>{if(!lifted)return;let i=0;const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
 
   // Count
   useEffect(()=>{fetch('/api/waitlist/count').then(r=>r.json()).then(d=>{if(d.count!==undefined)setCount(d.count)}).catch(()=>{})},[])
