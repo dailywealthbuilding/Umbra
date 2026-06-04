@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const PROMPT = `You are UMBRA's AI Archivist. UMBRA is a premium dark archive vault — a visual library of rare, high-aesthetic imagery from around the world.
 
-Analyze this image deeply. Return ONLY valid JSON. No markdown. No preamble. No extra text.
+Analyze this image deeply. Return ONLY valid JSON. No markdown. No preamble. No extra text whatsoever.
 
 {
-  "title": "2-4 word poetic title. Evocative, not literal. Example: 'Harlem Exhales Dusk', 'Stones That Hold Rain'",
+  "title": "2-4 word poetic title. Evocative, not literal. Example: 'Harlem Exhales Dusk', 'Stones That Hold Rain', 'Nairobi Before Traffic'",
   "description": "One atmospheric sentence. Present tense. Max 120 characters. Should feel like a whisper.",
-  "aesthetic_tags": ["1-3 values ONLY from this list: Dark Luxury, Quiet Architecture, Raw Documentary, Industrial Pastoral, Sacred Geometry, Neon Noir, Cinematic Decay, East African Light, Urban Pulse, Brutalist Memory, Mediterranean Texture, Wilderness Sublime, Sacred Ritual, Islamic Light, Nordic Silence"],
-  "mood_tags": ["1-3 values ONLY from this list: Golden Hour, Blue Hour, Nocturnal, Dusk, Dawn, Electric, Silence, Sacred, Decay, Rain, Gold, Stone, Mist, Fire, Amber, Void"],
-  "origin_region": "The most likely geographic region. Be specific. Examples: East Africa, North Africa, East Asia, Middle East, Caribbean, South America, Caucasus, Mediterranean, Scandinavia, West Africa",
-  "era": "Decade the image feels like or was likely taken. Examples: 1970s, 1990s, 2000s, 2020s",
+  "aesthetic_tags": ["1-3 values ONLY from: Dark Luxury, Quiet Architecture, Raw Documentary, Industrial Pastoral, Sacred Geometry, Neon Noir, Cinematic Decay, East African Light, Urban Pulse, Brutalist Memory, Mediterranean Texture, Wilderness Sublime, Sacred Ritual, Islamic Light, Nordic Silence"],
+  "mood_tags": ["1-3 values ONLY from: Golden Hour, Blue Hour, Nocturnal, Dusk, Dawn, Electric, Silence, Sacred, Decay, Rain, Gold, Stone, Mist, Fire, Amber, Void"],
+  "origin_region": "Most likely geographic region. Examples: East Africa, North Africa, East Asia, Middle East, Caribbean, South America, Caucasus, Mediterranean, Scandinavia, West Africa, South Asia",
+  "era": "Decade the image feels like or was taken. Examples: 1970s, 1990s, 2000s, 2020s",
   "asset_type": "image",
-  "tier_required": "One of: access (standard quality), noir (elevated and moody), prestige (exceptional composition or rarity), obsidian (museum-grade, culturally significant). Be honest — obsidian is rare."
+  "tier_required": "One of: access (standard), noir (elevated, moody), prestige (exceptional composition), obsidian (museum-grade, culturally significant). Be honest — obsidian is rare, most images are access or noir."
 }
 
 Return ONLY the JSON object. Nothing else.`
@@ -25,74 +25,83 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No URL provided' }, { status: 400 })
     }
 
-    const apiKey = process.env.GEMINI_API_KEY
+    const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY not set in environment variables' },
+        { error: 'OPENROUTER_API_KEY not configured in Vercel environment variables' },
         { status: 500 }
       )
     }
 
-    // Fetch the image from Cloudinary and convert to base64
-    // (Gemini requires inline base64 for external URLs)
+    // Fetch image from Cloudinary and convert to base64
     let base64Image: string
     let mimeType: string
 
     try {
       const imageRes = await fetch(url)
-      if (!imageRes.ok) throw new Error(`Image fetch failed: ${imageRes.status}`)
+      if (!imageRes.ok) throw new Error(`Fetch failed with status ${imageRes.status}`)
       const buffer = await imageRes.arrayBuffer()
       base64Image = Buffer.from(buffer).toString('base64')
       mimeType = imageRes.headers.get('content-type') || 'image/jpeg'
     } catch (e) {
       return NextResponse.json(
-        { error: `Could not fetch image: ${String(e)}` },
+        { error: 'Could not fetch image from Cloudinary', detail: String(e) },
         { status: 400 }
       )
     }
 
-    // Call Gemini 1.5 Flash (free tier: 15 RPM, 1M tokens/day)
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Image,
-                  },
+    // Call OpenRouter — OpenAI-compatible format
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://umbra-wine.vercel.app',
+        'X-Title': 'UMBRA Vault',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-exp:free',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Image}`,
                 },
-                {
-                  text: PROMPT,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 800,
+              },
+              {
+                type: 'text',
+                text: PROMPT,
+              },
+            ],
           },
-        }),
-      }
-    )
+        ],
+        max_tokens: 800,
+        temperature: 0.3,
+      }),
+    })
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text()
+    if (!response.ok) {
+      const errText = await response.text()
       return NextResponse.json(
-        { error: 'Gemini API error', detail: errText },
+        { error: 'OpenRouter API error', detail: errText },
         { status: 500 }
       )
     }
 
-    const geminiData = await geminiRes.json()
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const data = await response.json()
+    const rawText: string = data.choices?.[0]?.message?.content || ''
 
-    // Strip markdown fences if model adds them
+    if (!rawText) {
+      return NextResponse.json(
+        { error: 'Empty response from model', raw: data },
+        { status: 500 }
+      )
+    }
+
+    // Strip markdown fences if model wraps response
     const clean = rawText.replace(/```json|```/g, '').trim()
 
     let metadata
