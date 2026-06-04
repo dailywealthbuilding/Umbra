@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const PROMPT = `You are UMBRA's AI Archivist. UMBRA is a premium dark archive vault — a visual library of rare, high-aesthetic imagery from around the world.
 
-Analyze this image deeply. Return ONLY valid JSON. No markdown. No preamble. No commentary.
+Analyze this image deeply. Return ONLY valid JSON. No markdown. No preamble. No extra text.
 
 {
   "title": "2-4 word poetic title. Evocative, not literal. Example: 'Harlem Exhales Dusk', 'Stones That Hold Rain'",
@@ -12,10 +12,10 @@ Analyze this image deeply. Return ONLY valid JSON. No markdown. No preamble. No 
   "origin_region": "The most likely geographic region. Be specific. Examples: East Africa, North Africa, East Asia, Middle East, Caribbean, South America, Caucasus, Mediterranean, Scandinavia, West Africa",
   "era": "Decade the image feels like or was likely taken. Examples: 1970s, 1990s, 2000s, 2020s",
   "asset_type": "image",
-  "tier_required": "One of: access (standard quality, broad appeal), noir (elevated, moody, intentional), prestige (exceptional composition or rarity), obsidian (museum-grade, culturally significant)"
+  "tier_required": "One of: access (standard quality), noir (elevated and moody), prestige (exceptional composition or rarity), obsidian (museum-grade, culturally significant). Be honest — obsidian is rare."
 }
 
-Be honest. Tier obsidian is rare. Most images are access or noir.`
+Return ONLY the JSON object. Nothing else.`
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,59 +25,91 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No URL provided' }, { status: 400 })
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
+    const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'GEMINI_API_KEY not set in environment variables' },
+        { status: 500 }
+      )
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'url', url },
-              },
-              {
-                type: 'text',
-                text: PROMPT,
-              },
-            ],
+    // Fetch the image from Cloudinary and convert to base64
+    // (Gemini requires inline base64 for external URLs)
+    let base64Image: string
+    let mimeType: string
+
+    try {
+      const imageRes = await fetch(url)
+      if (!imageRes.ok) throw new Error(`Image fetch failed: ${imageRes.status}`)
+      const buffer = await imageRes.arrayBuffer()
+      base64Image = Buffer.from(buffer).toString('base64')
+      mimeType = imageRes.headers.get('content-type') || 'image/jpeg'
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Could not fetch image: ${String(e)}` },
+        { status: 400 }
+      )
+    }
+
+    // Call Gemini 1.5 Flash (free tier: 15 RPM, 1M tokens/day)
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Image,
+                  },
+                },
+                {
+                  text: PROMPT,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 800,
           },
-        ],
-      }),
-    })
+        }),
+      }
+    )
 
-    if (!response.ok) {
-      const err = await response.text()
-      return NextResponse.json({ error: 'Anthropic API error', detail: err }, { status: 500 })
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text()
+      return NextResponse.json(
+        { error: 'Gemini API error', detail: errText },
+        { status: 500 }
+      )
     }
 
-    const data = await response.json()
-    const rawText = data.content?.[0]?.text || ''
+    const geminiData = await geminiRes.json()
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-    // Strip any markdown fences if model wraps in ```json
+    // Strip markdown fences if model adds them
     const clean = rawText.replace(/```json|```/g, '').trim()
 
     let metadata
     try {
       metadata = JSON.parse(clean)
     } catch {
-      return NextResponse.json({ error: 'JSON parse failed', raw: rawText }, { status: 500 })
+      return NextResponse.json(
+        { error: 'JSON parse failed', raw: rawText },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ metadata })
   } catch (err) {
-    return NextResponse.json({ error: 'Server error', detail: String(err) }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Server error', detail: String(err) },
+      { status: 500 }
+    )
   }
 }
