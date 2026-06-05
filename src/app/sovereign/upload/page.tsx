@@ -1,479 +1,560 @@
-'use client'
-import { useState, useCallback, useRef } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import Link from 'next/link'
+'use client';
 
-type Stage = 'gate' | 'drop' | 'uploading' | 'analyzing' | 'review' | 'publishing' | 'done'
+import { useState, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
-type AssetMeta = {
-  title: string
-  description: string
-  aesthetic_tags: string[]
-  mood_tags: string[]
-  origin_region: string
-  era: string
-  asset_type: string
-  tier_required: string
-  cloudinary_url: string
-  thumbnail_url: string
-  cloudinary_public_id: string
-  is_featured: boolean
-  is_sovereign_marked: boolean
+// ─── Supabase ───────────────────────────────────────────────────────────────
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
+const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'umbra_unsigned';
+const OR_KEY        = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY!;
+const CORRECT_KEY   = process.env.NEXT_PUBLIC_OBSIDIAN_KEY!;
+const AI_MODEL      = 'nvidia/nemotron-nano-12b-v2-vl:free';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+type Tab    = 'single' | 'bulk';
+type Status = 'pending' | 'uploading' | 'analyzing' | 'ready' | 'publishing' | 'published' | 'error';
+
+interface Meta {
+  title         : string;
+  description   : string;
+  aesthetic_tags: string;
+  mood_tags     : string;
+  origin_region : string;
+  era           : string;
+  tier_required : string;
 }
 
-const EMPTY_META: AssetMeta = {
-  title: '', description: '', aesthetic_tags: [], mood_tags: [],
-  origin_region: '', era: '2020s', asset_type: 'image',
-  tier_required: 'access', cloudinary_url: '', thumbnail_url: '',
-  cloudinary_public_id: '', is_featured: false, is_sovereign_marked: false,
+interface BulkItem {
+  id          : string;
+  file        : File;
+  previewUrl  : string;
+  status      : Status;
+  cloudUrl    : string;
+  thumbUrl    : string;
+  meta        : Meta;
+  errorMsg    : string;
 }
 
-const TIER_COLORS: Record<string, string> = {
-  access: '90,90,106',
-  noir: '201,168,76',
-  prestige: '139,92,246',
-  obsidian: '13,148,136',
+const DEFAULT_META: Meta = {
+  title: '', description: '', aesthetic_tags: '',
+  mood_tags: '', origin_region: '', era: '', tier_required: 'NOIR',
+};
+
+const STATUS_COLOR: Record<Status, string> = {
+  pending   : '#5a5a6a',
+  uploading : '#c9a84c',
+  analyzing : '#c9a84c',
+  ready     : '#4caf87',
+  publishing: '#c9a84c',
+  published : '#3a3a4a',
+  error     : '#cf4c4c',
+};
+
+const TIERS = ['SHADOW', 'NOIR', 'PRESTIGE', 'OBSIDIAN'];
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+async function uploadToCloudinary(source: File | string): Promise<{ url: string; thumb: string }> {
+  const fd = new FormData();
+  fd.append('file', source as Blob);
+  fd.append('upload_preset', UPLOAD_PRESET);
+  fd.append('folder', 'umbra');
+
+  const res  = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: fd });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error(data.error?.message || 'Cloudinary failed');
+  return {
+    url  : data.secure_url,
+    thumb: data.secure_url.replace('/upload/', '/upload/w_400,q_80/'),
+  };
 }
 
-const AI_PROMPT = `You are UMBRA's AI Archivist. UMBRA is a premium dark archive vault — a visual library of rare, high-aesthetic imagery from around the world.
-
-Analyze this image. Return ONLY a valid JSON object. No markdown. No preamble. No extra text.
-
+async function analyzeWithAI(imageUrl: string): Promise<Meta> {
+  const prompt = `Analyze this image. Return ONLY a JSON object — no preamble, no markdown fences.
 {
-  "title": "2-4 word poetic title. Evocative not literal. Example: 'Lagos Before Rain', 'Stones Hold Memory'",
-  "description": "One atmospheric sentence. Present tense. Max 100 characters.",
-  "aesthetic_tags": ["1-2 from: Dark Luxury, Quiet Architecture, Raw Documentary, Industrial Pastoral, Sacred Geometry, Neon Noir, Cinematic Decay, East African Light, Urban Pulse, Brutalist Memory, Mediterranean Texture, Wilderness Sublime"],
-  "mood_tags": ["1-2 from: Golden Hour, Blue Hour, Nocturnal, Dusk, Dawn, Electric, Silence, Sacred, Decay, Rain, Gold, Stone, Mist, Fire, Amber, Void"],
-  "origin_region": "Most likely region: East Africa, West Africa, North Africa, East Asia, Middle East, Caribbean, South America, Mediterranean, Scandinavia, South Asia, etc.",
-  "era": "Decade: 1970s, 1980s, 1990s, 2000s, 2010s, or 2020s",
-  "asset_type": "image",
-  "tier_required": "access, noir, prestige, or obsidian"
-}`
+  "title": "evocative title, 4–6 words max",
+  "description": "atmospheric description, 1 sentence, sensory language only",
+  "aesthetic_tags": "comma-separated, 2–3 tags from: Dark Luxury, Quiet Architecture, Raw Documentary, Sacred Geometry, Industrial Pastoral, Urban Myth, Coastal Silence, Ritual Space",
+  "mood_tags": "comma-separated, 3 mood words e.g. Still, Weight, Reverence, Shadow, Solitude, Ancient, Raw, Dusk",
+  "origin_region": "region or country implied by the image",
+  "era": "decade e.g. 2020s",
+  "tier_required": "SHADOW, NOIR, PRESTIGE, or OBSIDIAN"
+}`;
 
-const AESTHETICS = [
-  'Dark Luxury','Quiet Architecture','Raw Documentary','Industrial Pastoral',
-  'Sacred Geometry','Neon Noir','Cinematic Decay','East African Light',
-  'Urban Pulse','Brutalist Memory','Mediterranean Texture','Wilderness Sublime',
-]
-const MOODS = [
-  'Golden Hour','Blue Hour','Nocturnal','Dusk','Dawn','Electric',
-  'Silence','Sacred','Decay','Rain','Gold','Stone','Mist','Fire','Amber','Void',
-]
-const REGIONS = [
-  'East Africa','West Africa','North Africa','East Asia','South Asia','Southeast Asia',
-  'Middle East','Caucasus','Mediterranean','Caribbean','South America','North America',
-  'Japan','Oceania','Central Asia','Nordic','Eastern Europe',
-]
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method : 'POST',
+    headers: { Authorization: `Bearer ${OR_KEY}`, 'Content-Type': 'application/json' },
+    body   : JSON.stringify({
+      model   : AI_MODEL,
+      messages: [{
+        role   : 'user',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl } },
+          { type: 'text', text: prompt },
+        ],
+      }],
+    }),
+  });
 
-export default function SovereignUploadPage() {
-  const [stage, setStage] = useState<Stage>('gate')
-  const [key, setKey] = useState('')
-  const [meta, setMeta] = useState<AssetMeta>(EMPTY_META)
-  const [preview, setPreview] = useState('')
-  const [error, setError] = useState('')
-  const [aiError, setAiError] = useState('')
-  const [published, setPublished] = useState<{ id: string; title: string }[]>([])
-  const [dragging, setDragging] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const data = await res.json();
+  const raw  = data.choices?.[0]?.message?.content || '{}';
+  const clean = raw.replace(/```json|```/g, '').trim();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  try {
+    const p = JSON.parse(clean);
+    return {
+      title         : p.title          || '',
+      description   : p.description    || '',
+      aesthetic_tags: p.aesthetic_tags || '',
+      mood_tags     : p.mood_tags       || '',
+      origin_region : p.origin_region  || '',
+      era           : p.era            || '2020s',
+      tier_required : p.tier_required  || 'NOIR',
+    };
+  } catch {
+    return { ...DEFAULT_META };
+  }
+}
 
-  function authenticate() {
-    const expected = process.env.NEXT_PUBLIC_OBSIDIAN_KEY
-    const valid = !expected ? key.trim().length > 8 : key === expected
-    if (valid) { setStage('drop'); return }
-    setError('Key rejected.')
-    setTimeout(() => setError(''), 2000)
+async function publishToVault(cloudUrl: string, thumbUrl: string, meta: Meta) {
+  const parse = (s: string) => s.split(',').map(t => t.trim()).filter(Boolean);
+  const { error } = await supabase.from('assets').insert({
+    cloudinary_url : cloudUrl,
+    thumbnail_url  : thumbUrl,
+    title          : meta.title,
+    description    : meta.description,
+    aesthetic_tags : parse(meta.aesthetic_tags),
+    mood_tags      : parse(meta.mood_tags),
+    origin_region  : meta.origin_region,
+    era            : meta.era,
+    tier_required  : meta.tier_required,
+    is_active      : true,
+  });
+  if (error) throw error;
+}
+
+// ─── Root Component ───────────────────────────────────────────────────────────
+export default function SovereignUpload() {
+  const [key,           setKey          ] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+  const [tab,           setTab          ] = useState<Tab>('single');
+
+  function handleAuth() {
+    if (key === CORRECT_KEY) setAuthenticated(true);
+    else alert('Access denied. The vault remains closed.');
   }
 
-  async function uploadToCloudinary(file: File): Promise<{ url: string; publicId: string }> {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
-    const preset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
-    if (!cloudName || !preset) throw new Error('Cloudinary env vars missing')
+  if (!authenticated) return <AuthGate keyVal={key} setKey={setKey} onAuth={handleAuth} />;
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('upload_preset', preset)
-    formData.append('folder', 'umbra')
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-      { method: 'POST', body: formData }
-    )
-    if (!res.ok) throw new Error(`Cloudinary failed: ${res.status}`)
-    const data = await res.json()
-    return { url: data.secure_url, publicId: data.public_id }
-  }
-
-  // Direct browser → OpenRouter call. No server route needed.
-  async function analyzeWithAI(imageUrl: string): Promise<Partial<AssetMeta>> {
-    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY
-    if (!apiKey) {
-      setAiError('NEXT_PUBLIC_OPENROUTER_API_KEY not set in Vercel.')
-      return {}
-    }
-
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://umbra-wine.vercel.app',
-        'X-Title': 'UMBRA Vault',
-      },
-      body: JSON.stringify({
-        model: 'nvidia/nemotron-nano-12b-v2-vl:free',
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: imageUrl } },
-            { type: 'text', text: AI_PROMPT },
-          ],
-        }],
-        max_tokens: 800,
-        temperature: 0.3,
-      }),
-    })
-
-    if (!res.ok) {
-      const txt = await res.text()
-      setAiError(`OpenRouter error ${res.status}: ${txt.slice(0, 120)}`)
-      return {}
-    }
-
-    const data = await res.json()
-    const raw: string = data.choices?.[0]?.message?.content || ''
-    if (!raw) { setAiError('AI returned empty response.'); return {} }
-
-    const clean = raw.replace(/```json|```/g, '').trim()
-    try {
-      return JSON.parse(clean)
-    } catch {
-      setAiError(`JSON parse failed. Raw: ${clean.slice(0, 80)}`)
-      return {}
-    }
-  }
-
-  async function processFile(file: File) {
-    setError('')
-    setAiError('')
-
-    const reader = new FileReader()
-    reader.onload = e => setPreview(e.target?.result as string)
-    reader.readAsDataURL(file)
-
-    setStage('uploading')
-    let cloudinaryUrl = ''
-    let publicId = ''
-    let thumbUrl = ''
-
-    try {
-      const { url, publicId: pid } = await uploadToCloudinary(file)
-      cloudinaryUrl = url
-      publicId = pid
-      thumbUrl = url.replace('/upload/', '/upload/w_400,q_80/')
-    } catch (e) {
-      setError(String(e))
-      setStage('drop')
-      return
-    }
-
-    setStage('analyzing')
-    const aiMeta = await analyzeWithAI(cloudinaryUrl)
-
-    setMeta({
-      ...EMPTY_META,
-      ...aiMeta,
-      cloudinary_url: cloudinaryUrl,
-      thumbnail_url: thumbUrl,
-      cloudinary_public_id: publicId,
-    })
-    setStage('review')
-  }
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file && file.type.startsWith('image/')) processFile(file)
-  }, [])
-
-  async function publish() {
-    if (!meta.title || !meta.cloudinary_url) return
-    setStage('publishing')
-
-    const { data, error: dbError } = await supabase.from('assets').insert([{
-      title: meta.title, description: meta.description,
-      cloudinary_url: meta.cloudinary_url, thumbnail_url: meta.thumbnail_url,
-      cloudinary_public_id: meta.cloudinary_public_id, asset_type: meta.asset_type,
-      aesthetic_tags: meta.aesthetic_tags, mood_tags: meta.mood_tags,
-      origin_region: meta.origin_region, era: meta.era,
-      tier_required: meta.tier_required, is_featured: meta.is_featured,
-      is_sovereign_marked: meta.is_sovereign_marked,
-      license: 'cc0', status: 'active', view_count: 0, download_count: 0, vintage_score: 0,
-    }]).select('id, title').single()
-
-    if (dbError) { setError(dbError.message); setStage('review'); return }
-    setPublished(p => [{ id: data.id, title: data.title }, ...p])
-    setStage('done')
-  }
-
-  function reset() {
-    setMeta(EMPTY_META); setPreview(''); setError(''); setAiError(''); setStage('drop')
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  function toggleTag(field: 'aesthetic_tags' | 'mood_tags', tag: string) {
-    setMeta(m => ({
-      ...m,
-      [field]: m[field].includes(tag) ? m[field].filter(t => t !== tag) : [...m[field], tag],
-    }))
-  }
-
-  const root: React.CSSProperties = {
-    background: '#050507', minHeight: '100vh', color: '#d4d4e0',
-    fontFamily: "'DM Sans', sans-serif", fontWeight: 300,
-  }
-
-  // GATE
-  if (stage === 'gate') return (
-    <div style={{ ...root, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-      <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Courier+Prime:wght@400;700&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet" />
-      <p style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 8, color: '#8a6f33', textTransform: 'uppercase', marginBottom: 40 }}>Sovereign Access</p>
-      <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 52, fontWeight: 900, color: 'transparent', background: 'linear-gradient(135deg,#c9a84c,#f0d990 40%,#8a6f33)', WebkitBackgroundClip: 'text', backgroundClip: 'text', marginBottom: 52, letterSpacing: 8 }}>UMBRA</h1>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 340 }}>
-        <input type="password" placeholder="Obsidian Key" value={key}
-          onChange={e => setKey(e.target.value)} onKeyDown={e => e.key === 'Enter' && authenticate()}
-          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(201,168,76,0.15)', color: '#d4d4e0', padding: '14px 20px', fontSize: 13, fontFamily: "'Courier Prime',monospace", letterSpacing: 3, outline: 'none', textAlign: 'center' }} />
-        <button onClick={authenticate}
-          style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.35)', color: '#c9a84c', padding: '13px', fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 6, textTransform: 'uppercase', cursor: 'pointer' }}>
-          Enter
-        </button>
-        {error && <p style={{ color: '#e57373', fontFamily: "'Courier Prime',monospace", fontSize: 11, textAlign: 'center', letterSpacing: 2 }}>{error}</p>}
-      </div>
-    </div>
-  )
-
-  // DROP
-  if (stage === 'drop') return (
-    <div style={root}>
-      <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@1,300&family=Courier+Prime:wght@400&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet" />
-      <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px', height: 56, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <span style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: 700, color: '#c9a84c', letterSpacing: 5 }}>UMBRA</span>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <Link href="/browse" style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#3a3a4a', textDecoration: 'none', textTransform: 'uppercase' }}>Vault</Link>
-          <button onClick={() => setStage('gate')} style={{ background: 'none', border: 'none', fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#3a3a4a', cursor: 'pointer', textTransform: 'uppercase' }}>Lock</button>
-        </div>
-      </nav>
-      <div style={{ maxWidth: 700, margin: '80px auto', padding: '0 40px' }}>
-        <p style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 7, color: '#8a6f33', textTransform: 'uppercase', marginBottom: 12 }}>AI Archive</p>
-        <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 28, fontWeight: 700, color: '#d4d4e0', marginBottom: 8 }}>Drop a file. AI does the rest.</h1>
-        <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, fontStyle: 'italic', color: '#5a5a6a', marginBottom: 56 }}>Upload, analyze, publish — three breaths.</p>
-        <div
-          onDragOver={e => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          onClick={() => fileRef.current?.click()}
-          style={{ border: `2px dashed ${dragging ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.06)'}`, background: dragging ? 'rgba(201,168,76,0.04)' : 'rgba(255,255,255,0.01)', borderRadius: 2, padding: '80px 40px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.3s' }}>
-          <div style={{ fontSize: 40, marginBottom: 20, opacity: 0.3 }}>&#8593;</div>
-          <p style={{ fontFamily: "'Cinzel',serif", fontSize: 13, color: dragging ? '#c9a84c' : '#5a5a6a', letterSpacing: 4, marginBottom: 8, textTransform: 'uppercase' }}>{dragging ? 'Release to upload' : 'Drop image here'}</p>
-          <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 2 }}>or click to browse</p>
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} style={{ display: 'none' }} />
-        {published.length > 0 && (
-          <div style={{ marginTop: 48 }}>
-            <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: '#8a6f33', textTransform: 'uppercase', marginBottom: 12 }}>Session</p>
-            {published.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '10px 0' }}>
-                <span style={{ fontSize: 13, color: '#9a9aaa' }}>{p.title}</span>
-                <Link href={`/asset/${p.id}`} style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#8a6f33', textDecoration: 'none', textTransform: 'uppercase' }}>View</Link>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-
-  // LOADING
-  if (stage === 'uploading' || stage === 'analyzing' || stage === 'publishing') return (
-    <div style={{ ...root, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
-      <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Courier+Prime:wght@400&display=swap" rel="stylesheet" />
-      {preview && <div style={{ width: 120, height: 160, overflow: 'hidden', filter: 'brightness(0.5)' }}><img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /></div>}
-      <div style={{ textAlign: 'center' }}>
-        <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 5, color: '#8a6f33', textTransform: 'uppercase', marginBottom: 12 }}>
-          {stage === 'uploading' && 'Uploading to Cloudinary...'}
-          {stage === 'analyzing' && 'AI is reading the image...'}
-          {stage === 'publishing' && 'Publishing to vault...'}
-        </p>
-        <p style={{ fontFamily: "'Cinzel',serif", fontSize: 18, color: 'rgba(201,168,76,0.3)', letterSpacing: 4 }}>
-          {stage === 'uploading' && 'Transfer'}
-          {stage === 'analyzing' && 'Analysis'}
-          {stage === 'publishing' && 'Commit'}
-        </p>
-      </div>
-      <style>{`@keyframes pulse{0%,100%{opacity:.3}50%{opacity:.8}}.pulse{animation:pulse 1.5s ease-in-out infinite}`}</style>
-      <div className="pulse" style={{ width: 1, height: 48, background: 'linear-gradient(to bottom,transparent,#c9a84c,transparent)' }} />
-    </div>
-  )
-
-  // DONE
-  if (stage === 'done') return (
-    <div style={{ ...root, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
-      <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Courier+Prime:wght@400&family=Cormorant+Garamond:ital,wght@1,300&display=swap" rel="stylesheet" />
-      {preview && <div style={{ width: 100, height: 130, overflow: 'hidden' }}><img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /></div>}
-      <div style={{ textAlign: 'center' }}>
-        <p style={{ fontFamily: "'Cinzel',serif", fontSize: 20, color: '#c9a84c', letterSpacing: 4, marginBottom: 8 }}>{meta.title}</p>
-        <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontStyle: 'italic', color: '#5a5a6a', marginBottom: 32 }}>The vault holds it now.</p>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {published[0] && <Link href={`/asset/${published[0].id}`} style={{ padding: '10px 24px', border: '1px solid rgba(201,168,76,0.3)', color: '#c9a84c', fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, textDecoration: 'none', textTransform: 'uppercase' }}>View Asset</Link>}
-          <button onClick={reset} style={{ padding: '10px 24px', border: '1px solid rgba(255,255,255,0.06)', color: '#5a5a6a', fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, background: 'none', cursor: 'pointer', textTransform: 'uppercase' }}>Upload Another</button>
-        </div>
-      </div>
-    </div>
-  )
-
-  // REVIEW FORM
   return (
-    <div style={root}>
-      <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Courier+Prime:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px', height: 56, background: 'rgba(5,5,7,0.97)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <span style={{ fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: 700, color: '#c9a84c', letterSpacing: 5 }}>UMBRA</span>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <button onClick={reset} style={{ background: 'none', border: 'none', fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', cursor: 'pointer', textTransform: 'uppercase' }}>New Upload</button>
-          <Link href="/browse" style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#3a3a4a', textDecoration: 'none', textTransform: 'uppercase' }}>Vault</Link>
-        </div>
-      </nav>
+    <div style={{ minHeight: '100vh', background: '#050507', color: '#d4d4e0', fontFamily: "'DM Sans', sans-serif" }}>
+      <Header tab={tab} setTab={setTab} />
+      <div style={{ padding: '48px' }}>
+        {tab === 'single' ? <SingleUpload /> : <BulkUpload />}
+      </div>
+    </div>
+  );
+}
 
-      {/* Error banners */}
-      {error && <div style={{ background: 'rgba(139,26,26,0.08)', borderBottom: '1px solid rgba(139,26,26,0.2)', padding: '12px 40px', fontSize: 12, color: '#e57373', fontFamily: "'Courier Prime',monospace" }}>{error}</div>}
-      {aiError && (
-        <div style={{ background: 'rgba(201,168,76,0.05)', borderBottom: '1px solid rgba(201,168,76,0.15)', padding: '12px 40px', fontSize: 11, color: '#c9a84c', fontFamily: "'Courier Prime',monospace", display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>AI: {aiError} — fill manually below.</span>
-          <button onClick={() => setAiError('')} style={{ background: 'none', border: 'none', color: '#5a5a6a', cursor: 'pointer', fontSize: 14 }}>x</button>
+// ─── Auth Gate ────────────────────────────────────────────────────────────────
+function AuthGate({ keyVal, setKey, onAuth }: { keyVal: string; setKey: (v: string) => void; onAuth: () => void }) {
+  return (
+    <div style={{ minHeight: '100vh', background: '#050507', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 420, padding: '56px', border: '1px solid #1a1a2e', background: '#0a0a0f' }}>
+        <p style={{ fontFamily: "'Cinzel', serif", fontSize: 20, color: '#c9a84c', letterSpacing: 6, marginBottom: 8 }}>UMBRA</p>
+        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#5a5a6a', letterSpacing: 4, marginBottom: 40 }}>SOVEREIGN ACCESS REQUIRED</p>
+        <input
+          type="password"
+          value={keyVal}
+          onChange={e => setKey(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && onAuth()}
+          placeholder="Obsidian Key"
+          style={{ width: '100%', padding: '14px 16px', background: '#050507', border: '1px solid #2a2a3a', color: '#d4d4e0', fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', boxSizing: 'border-box', marginBottom: 16 }}
+        />
+        <button
+          onClick={onAuth}
+          style={{ width: '100%', padding: '14px', background: '#c9a84c', color: '#050507', border: 'none', cursor: 'pointer', fontFamily: "'Cinzel', serif", fontSize: 11, letterSpacing: 4, fontWeight: 700 }}
+        >
+          AUTHENTICATE
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Header ───────────────────────────────────────────────────────────────────
+function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  return (
+    <div style={{ borderBottom: '1px solid #1a1a2e', padding: '24px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div>
+        <p style={{ fontFamily: "'Cinzel', serif", fontSize: 18, color: '#c9a84c', margin: 0, letterSpacing: 5 }}>UMBRA</p>
+        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#5a5a6a', margin: '4px 0 0', letterSpacing: 3 }}>SOVEREIGN UPLOAD PANEL</p>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {(['single', 'bulk'] as Tab[]).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding: '8px 24px',
+              border: `1px solid ${tab === t ? '#c9a84c' : '#2a2a3a'}`,
+              background: tab === t ? 'rgba(201,168,76,0.08)' : 'transparent',
+              color: tab === t ? '#c9a84c' : '#5a5a6a',
+              cursor: 'pointer',
+              fontFamily: "'Courier Prime', monospace",
+              fontSize: 10, letterSpacing: 3, textTransform: 'uppercase' as const,
+              transition: 'all 0.2s',
+            }}
+          >
+            {t.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Single Upload ────────────────────────────────────────────────────────────
+function SingleUpload() {
+  const [preview,    setPreview   ] = useState('');
+  const [cloudUrl,   setCloudUrl  ] = useState('');
+  const [thumbUrl,   setThumbUrl  ] = useState('');
+  const [meta,       setMeta      ] = useState<Meta>({ ...DEFAULT_META });
+  const [status,     setStatus    ] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [published,  setPublished ] = useState(false);
+
+  async function handleFile(file: File) {
+    setPreview(URL.createObjectURL(file));
+    setCloudUrl(''); setMeta({ ...DEFAULT_META }); setPublished(false);
+    setProcessing(true); setStatus('Uploading to vault...');
+
+    try {
+      const { url, thumb } = await uploadToCloudinary(file);
+      setCloudUrl(url); setThumbUrl(thumb);
+      setStatus('Reading image...');
+      const m = await analyzeWithAI(url);
+      setMeta(m); setStatus('');
+    } catch (e: any) {
+      setStatus(`Error: ${e.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  async function handlePublish() {
+    setProcessing(true); setStatus('Publishing...');
+    try {
+      await publishToVault(cloudUrl, thumbUrl, meta);
+      setPublished(true); setPreview(''); setCloudUrl(''); setMeta({ ...DEFAULT_META }); setStatus('');
+    } catch (e: any) {
+      setStatus(`Publish failed: ${e.message}`);
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  function pickFile() {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = 'image/*';
+    i.onchange = (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleFile(f); };
+    i.click();
+  }
+
+  const labelStyle = { fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 6 };
+  const inputStyle = { width: '100%', background: '#0a0a0f', border: '1px solid #2a2a3a', color: '#d4d4e0', padding: '10px 12px', fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: 'none', boxSizing: 'border-box' as const };
+
+  return (
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      {published && (
+        <div style={{ padding: '14px 20px', background: 'rgba(76,175,135,0.08)', border: '1px solid #4caf87', marginBottom: 32, fontFamily: "'Courier Prime', monospace", fontSize: 11, color: '#4caf87', letterSpacing: 3 }}>
+          ASSET PUBLISHED — LIVE IN THE VAULT
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', minHeight: 'calc(100vh - 56px)' }}>
-        {/* IMAGE PREVIEW */}
-        <div style={{ position: 'sticky', top: 56, height: 'calc(100vh - 56px)', overflow: 'hidden', background: '#030305' }}>
-          {preview && <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.65)' }} />}
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top,rgba(5,5,7,0.9) 0%,transparent 60%)' }} />
-          <div style={{ position: 'absolute', bottom: 24, left: 20, right: 20 }}>
-            {meta.tier_required && <span style={{ fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 3, padding: '3px 10px', border: `1px solid rgba(${TIER_COLORS[meta.tier_required]},0.4)`, color: `rgb(${TIER_COLORS[meta.tier_required]})`, textTransform: 'uppercase', marginBottom: 8, display: 'inline-block' }}>{meta.tier_required}</span>}
-            <p style={{ fontFamily: "'Cinzel',serif", fontSize: 13, color: 'rgba(212,212,224,0.8)', letterSpacing: 1, lineHeight: 1.5 }}>{meta.title || 'Untitled'}</p>
-          </div>
-        </div>
-
-        {/* FORM */}
-        <div style={{ padding: '40px 48px 80px', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: aiError ? '#c9a84c' : '#13d498' }} />
-            <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: aiError ? '#c9a84c' : '#13d498', textTransform: 'uppercase' }}>
-              {aiError ? 'AI error — fill manually' : 'AI analysis complete — review and publish'}
-            </p>
-          </div>
-
-          {/* TITLE */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Title</label>
-            <input value={meta.title} onChange={e => setMeta(m => ({ ...m, title: e.target.value }))}
-              placeholder="Give it a name..."
-              style={{ width: '100%', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: '#d4d4e0', padding: '12px 16px', fontSize: 16, fontFamily: "'Cinzel',serif", outline: 'none', letterSpacing: 1 }} />
-          </div>
-
-          {/* DESCRIPTION */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Description</label>
-            <textarea value={meta.description} onChange={e => setMeta(m => ({ ...m, description: e.target.value }))} rows={2}
-              placeholder="One atmospheric sentence..."
-              style={{ width: '100%', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: '#d4d4e0', padding: '12px 16px', fontSize: 14, fontFamily: "'Cormorant Garamond',serif", fontStyle: 'italic', outline: 'none', resize: 'none', lineHeight: 1.7 }} />
-          </div>
-
-          {/* AESTHETICS */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 12 }}>
-              Aesthetic {meta.aesthetic_tags.length > 0 && <span style={{ color: '#c9a84c', marginLeft: 8 }}>{meta.aesthetic_tags.join(', ')}</span>}
-            </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {AESTHETICS.map(a => (
-                <button key={a} onClick={() => toggleTag('aesthetic_tags', a)}
-                  style={{ fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 1.5, padding: '5px 12px', border: `1px solid ${meta.aesthetic_tags.includes(a) ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.05)'}`, background: meta.aesthetic_tags.includes(a) ? 'rgba(201,168,76,0.08)' : 'none', color: meta.aesthetic_tags.includes(a) ? '#c9a84c' : '#4a4a5a', cursor: 'pointer', textTransform: 'uppercase', transition: 'all 0.15s' }}>
-                  {a}
-                </button>
-              ))}
+      {/* Drop zone */}
+      <div
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) handleFile(f); }}
+        onClick={pickFile}
+        style={{ border: `2px dashed ${preview ? '#c9a84c' : '#2a2a3a'}`, cursor: 'pointer', overflow: 'hidden', minHeight: preview ? 'auto' : 220, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 0.3s', position: 'relative' as const }}
+      >
+        {preview
+          ? <img src={preview} alt="" style={{ width: '100%', maxHeight: 420, objectFit: 'cover', display: 'block' }} />
+          : (
+            <div style={{ textAlign: 'center', padding: '60px 40px' }}>
+              <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, color: '#5a5a6a', fontStyle: 'italic', margin: '0 0 8px' }}>Drop image here</p>
+              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 3, margin: 0 }}>OR CLICK TO BROWSE</p>
             </div>
-          </div>
+          )
+        }
+      </div>
 
-          {/* MOODS */}
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 12 }}>
-              Mood {meta.mood_tags.length > 0 && <span style={{ color: 'rgba(201,168,76,0.6)', marginLeft: 8 }}>{meta.mood_tags.join(', ')}</span>}
-            </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {MOODS.map(m => (
-                <button key={m} onClick={() => toggleTag('mood_tags', m)}
-                  style={{ fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 1.5, padding: '4px 10px', border: `1px solid ${meta.mood_tags.includes(m) ? 'rgba(201,168,76,0.35)' : 'rgba(255,255,255,0.04)'}`, background: meta.mood_tags.includes(m) ? 'rgba(201,168,76,0.06)' : 'none', color: meta.mood_tags.includes(m) ? 'rgba(201,168,76,0.7)' : '#3a3a4a', cursor: 'pointer', textTransform: 'uppercase', transition: 'all 0.15s' }}>
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
+      {status && <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 11, color: '#c9a84c', letterSpacing: 3, margin: '16px 0 0' }}>{status}</p>}
 
-          {/* REGION + ERA + TIER */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 1fr', gap: 12, marginBottom: 32 }}>
-            <div>
-              <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Region</label>
-              <select value={meta.origin_region} onChange={e => setMeta(m => ({ ...m, origin_region: e.target.value }))}
-                style={{ width: '100%', background: '#050507', border: '1px solid rgba(255,255,255,0.06)', color: '#9a9aaa', padding: '10px 12px', fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: 'none' }}>
-                <option value="">Select</option>
-                {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Era</label>
-              <select value={meta.era} onChange={e => setMeta(m => ({ ...m, era: e.target.value }))}
-                style={{ width: '100%', background: '#050507', border: '1px solid rgba(255,255,255,0.06)', color: '#9a9aaa', padding: '10px 12px', fontSize: 12, fontFamily: "'DM Sans',sans-serif", outline: 'none' }}>
-                {['1970s','1980s','1990s','2000s','2010s','2020s'].map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#8a6f33', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Tier</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {[{id:'access',label:'SHADOW'},{id:'noir',label:'NOIR'},{id:'prestige',label:'PRESTIGE'},{id:'obsidian',label:'OBSIDIAN'}].map(t => (
-                  <button key={t.id} onClick={() => setMeta(m => ({ ...m, tier_required: t.id }))}
-                    style={{ padding: '6px 10px', fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 2, textTransform: 'uppercase', border: `1px solid ${meta.tier_required === t.id ? `rgba(${TIER_COLORS[t.id]},0.5)` : 'rgba(255,255,255,0.04)'}`, background: meta.tier_required === t.id ? `rgba(${TIER_COLORS[t.id]},0.08)` : 'none', color: meta.tier_required === t.id ? `rgb(${TIER_COLORS[t.id]})` : '#3a3a4a', cursor: 'pointer', textAlign: 'left' }}>
-                    {t.label}
-                  </button>
-                ))}
+      {cloudUrl && !processing && (
+        <div style={{ marginTop: 40 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            {(['title', 'origin_region', 'aesthetic_tags', 'mood_tags', 'era'] as (keyof Meta)[]).map(field => (
+              <div key={field}>
+                <label style={labelStyle}>{field.replace(/_/g, ' ').toUpperCase()}</label>
+                <input type="text" value={meta[field]} onChange={e => setMeta(p => ({ ...p, [field]: e.target.value }))} style={inputStyle} />
               </div>
+            ))}
+            <div>
+              <label style={labelStyle}>TIER REQUIRED</label>
+              <select value={meta.tier_required} onChange={e => setMeta(p => ({ ...p, tier_required: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+                {TIERS.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={labelStyle}>DESCRIPTION</label>
+              <textarea value={meta.description} onChange={e => setMeta(p => ({ ...p, description: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
             </div>
           </div>
-
-          {/* TOGGLES */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 36 }}>
-            <button onClick={() => setMeta(m => ({ ...m, is_featured: !m.is_featured }))}
-              style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, padding: '6px 16px', border: `1px solid ${meta.is_featured ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.05)'}`, background: meta.is_featured ? 'rgba(201,168,76,0.08)' : 'none', color: meta.is_featured ? '#c9a84c' : '#3a3a4a', cursor: 'pointer', textTransform: 'uppercase' }}>
-              {meta.is_featured ? 'Featured' : 'Not Featured'}
-            </button>
-            <button onClick={() => setMeta(m => ({ ...m, is_sovereign_marked: !m.is_sovereign_marked }))}
-              style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, padding: '6px 16px', border: `1px solid ${meta.is_sovereign_marked ? 'rgba(201,168,76,0.4)' : 'rgba(255,255,255,0.05)'}`, background: meta.is_sovereign_marked ? 'rgba(201,168,76,0.08)' : 'none', color: meta.is_sovereign_marked ? '#c9a84c' : '#3a3a4a', cursor: 'pointer', textTransform: 'uppercase' }}>
-              {meta.is_sovereign_marked ? 'Sovereign Mark' : 'No Mark'}
-            </button>
-          </div>
-
-          {/* PUBLISH */}
-          <button onClick={publish} disabled={!meta.title || !meta.cloudinary_url}
-            style={{ width: '100%', padding: '18px', background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.4)', color: '#c9a84c', fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 6, textTransform: 'uppercase', cursor: 'pointer', opacity: (!meta.title || !meta.cloudinary_url) ? 0.4 : 1, transition: 'background 0.3s' }}
-            onMouseEnter={e => { if (meta.title && meta.cloudinary_url) e.currentTarget.style.background = 'rgba(201,168,76,0.2)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(201,168,76,0.1)' }}>
-            Publish to Vault
+          <button
+            onClick={handlePublish}
+            disabled={processing}
+            style={{ marginTop: 24, width: '100%', padding: '16px', background: '#c9a84c', color: '#050507', border: 'none', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Cinzel', serif", fontSize: 12, letterSpacing: 4, fontWeight: 700, opacity: processing ? 0.5 : 1, transition: 'opacity 0.2s' }}
+          >
+            PUBLISH TO VAULT
           </button>
         </div>
-      </div>
+      )}
     </div>
-  )
+  );
+}
+
+// ─── Bulk Upload ──────────────────────────────────────────────────────────────
+function BulkUpload() {
+  const [items,      setItems     ] = useState<BulkItem[]>([]);
+  const [processing, setProcessing] = useState(false);
+
+  function addFiles(files: FileList | File[]) {
+    const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
+    const newItems: BulkItem[] = arr.map(f => ({
+      id: Math.random().toString(36).slice(2),
+      file: f, previewUrl: URL.createObjectURL(f),
+      status: 'pending', cloudUrl: '', thumbUrl: '',
+      meta: { ...DEFAULT_META }, errorMsg: '',
+    }));
+    setItems(prev => [...prev, ...newItems]);
+  }
+
+  function update(id: string, patch: Partial<BulkItem>) {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  }
+
+  function updateMeta(id: string, field: keyof Meta, val: string) {
+    setItems(prev => prev.map(i => i.id === id ? { ...i, meta: { ...i.meta, [field]: val } } : i));
+  }
+
+  async function processItem(item: BulkItem) {
+    update(item.id, { status: 'uploading' });
+    try {
+      const { url, thumb } = await uploadToCloudinary(item.file);
+      update(item.id, { cloudUrl: url, thumbUrl: thumb, status: 'analyzing' });
+      const meta = await analyzeWithAI(url);
+      update(item.id, { meta, status: 'ready' });
+    } catch (e: any) {
+      update(item.id, { status: 'error', errorMsg: e.message });
+    }
+  }
+
+  async function analyzeAll() {
+    if (processing) return;
+    setProcessing(true);
+    const targets = items.filter(i => i.status === 'pending' || i.status === 'error');
+    for (const item of targets) {
+      await processItem(item);
+      await new Promise(r => setTimeout(r, 600));
+    }
+    setProcessing(false);
+  }
+
+  async function publishItem(id: string) {
+    const item = items.find(i => i.id === id);
+    if (!item || item.status !== 'ready') return;
+    update(id, { status: 'publishing' });
+    try {
+      await publishToVault(item.cloudUrl, item.thumbUrl, item.meta);
+      update(id, { status: 'published' });
+    } catch (e: any) {
+      update(id, { status: 'error', errorMsg: e.message });
+    }
+  }
+
+  async function publishAllReady() {
+    const ready = items.filter(i => i.status === 'ready');
+    for (const item of ready) {
+      await publishItem(item.id);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  function clearPublished() {
+    setItems(prev => prev.filter(i => i.status !== 'published'));
+  }
+
+  function pickFiles() {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = 'image/*'; i.multiple = true;
+    i.onchange = (e) => { const f = (e.target as HTMLInputElement).files; if (f) addFiles(f); };
+    i.click();
+  }
+
+  const readyCount     = items.filter(i => i.status === 'ready').length;
+  const publishedCount = items.filter(i => i.status === 'published').length;
+  const pendingCount   = items.filter(i => i.status === 'pending' || i.status === 'error').length;
+
+  const labelStyle = { fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 4 };
+  const inputStyle = { width: '100%', background: '#050507', border: '1px solid #2a2a3a', color: '#d4d4e0', padding: '7px 10px', fontFamily: "'DM Sans', sans-serif", fontSize: 12, outline: 'none', boxSizing: 'border-box' as const };
+
+  return (
+    <div>
+      {/* Drop zone */}
+      <div
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+        onClick={pickFiles}
+        style={{ border: '2px dashed #2a2a3a', padding: '56px 40px', textAlign: 'center', cursor: 'pointer', marginBottom: 32, background: 'rgba(201,168,76,0.02)', transition: 'border-color 0.3s' }}
+      >
+        <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, color: '#5a5a6a', fontStyle: 'italic', margin: '0 0 8px' }}>Drop multiple images</p>
+        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 3, margin: 0 }}>OR CLICK TO SELECT — NO LIMIT</p>
+      </div>
+
+      {items.length > 0 && (
+        <>
+          {/* Bulk controls */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 40, alignItems: 'center', flexWrap: 'wrap' as const }}>
+            {pendingCount > 0 && (
+              <button
+                onClick={analyzeAll}
+                disabled={processing}
+                style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #c9a84c', color: '#c9a84c', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 3, opacity: processing ? 0.6 : 1 }}
+              >
+                {processing ? 'ANALYZING...' : `ANALYZE ALL (${pendingCount})`}
+              </button>
+            )}
+            {readyCount > 0 && (
+              <button
+                onClick={publishAllReady}
+                style={{ padding: '10px 24px', background: '#c9a84c', border: 'none', color: '#050507', cursor: 'pointer', fontFamily: "'Cinzel', serif", fontSize: 10, letterSpacing: 3, fontWeight: 700 }}
+              >
+                PUBLISH ALL READY ({readyCount})
+              </button>
+            )}
+            {publishedCount > 0 && (
+              <button
+                onClick={clearPublished}
+                style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #3a3a4a', color: '#5a5a6a', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 3 }}
+              >
+                CLEAR PUBLISHED ({publishedCount})
+              </button>
+            )}
+            <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 2, marginLeft: 'auto' }}>
+              {items.length} TOTAL · {publishedCount} IN VAULT
+            </span>
+          </div>
+
+          {/* Cards grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
+            {items.map(item => (
+              <div
+                key={item.id}
+                style={{
+                  background: '#0a0a0f',
+                  border: `1px solid ${item.status === 'error' ? '#3a1a1a' : item.status === 'published' ? '#1a1a1a' : '#1a1a2e'}`,
+                  opacity: item.status === 'published' ? 0.45 : 1,
+                  transition: 'opacity 0.4s',
+                }}
+              >
+                {/* Thumbnail */}
+                <div style={{ position: 'relative' as const, height: 160, overflow: 'hidden' }}>
+                  <img src={item.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <div style={{ position: 'absolute', top: 8, right: 8, padding: '3px 8px', background: '#050507', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2, color: STATUS_COLOR[item.status], border: `1px solid ${STATUS_COLOR[item.status]}` }}>
+                    {item.status.toUpperCase()}
+                  </div>
+                  <button
+                    onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))}
+                    style={{ position: 'absolute', top: 8, left: 8, width: 22, height: 22, background: 'rgba(5,5,7,0.8)', border: '1px solid #3a3a4a', color: '#7a7a8a', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+
+                  {/* Progress bar for active states */}
+                  {(item.status === 'uploading' || item.status === 'analyzing' || item.status === 'publishing') && (
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: '#1a1a2e' }}>
+                      <div style={{ height: '100%', width: '60%', background: '#c9a84c', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Fields */}
+                <div style={{ padding: '14px 16px' }}>
+                  {item.errorMsg && (
+                    <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#cf4c4c', letterSpacing: 2, margin: '0 0 10px' }}>{item.errorMsg}</p>
+                  )}
+
+                  {(['title', 'aesthetic_tags', 'mood_tags', 'origin_region'] as (keyof Meta)[]).map(field => (
+                    <div key={field} style={{ marginBottom: 8 }}>
+                      <label style={labelStyle}>{field.replace(/_/g, ' ').toUpperCase()}</label>
+                      <input
+                        type="text"
+                        value={item.meta[field]}
+                        onChange={e => updateMeta(item.id, field, e.target.value)}
+                        placeholder={item.status === 'pending' ? '—' : ''}
+                        style={inputStyle}
+                      />
+                    </div>
+                  ))}
+
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={labelStyle}>TIER</label>
+                    <select
+                      value={item.meta.tier_required}
+                      onChange={e => updateMeta(item.id, 'tier_required', e.target.value)}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
+                    >
+                      {TIERS.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Per-card action */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {(item.status === 'pending' || item.status === 'error') && (
+                      <button
+                        onClick={() => processItem(item)}
+                        style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid #c9a84c', color: '#c9a84c', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2 }}
+                      >
+                        ANALYZE
+                      </button>
+                    )}
+                    {item.status === 'ready' && (
+                      <button
+                        onClick={() => publishItem(item.id)}
+                        style={{ flex: 1, padding: '8px', background: '#c9a84c', border: 'none', color: '#050507', cursor: 'pointer', fontFamily: "'Cinzel', serif", fontSize: 9, letterSpacing: 2, fontWeight: 700 }}
+                      >
+                        PUBLISH
+                      </button>
+                    )}
+                    {item.status === 'published' && (
+                      <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#4caf87', letterSpacing: 2 }}>IN THE VAULT</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <style>{`@keyframes pulse { 0%,100% { opacity:0.4 } 50% { opacity:1 } }`}</style>
+        </>
+      )}
+    </div>
+  );
 }
