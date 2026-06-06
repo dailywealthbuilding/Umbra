@@ -274,7 +274,7 @@ function SingleUpload() {
       const { url, thumb } = await uploadToCloudinary(file);
       setCloudUrl(url); setThumbUrl(thumb);
       setStatus('Reading image...');
-      const m = await analyzeWithAI(url);
+      const { meta: m } = await analyzeWithAI(url);
       setMeta(m); setStatus('');
     } catch (e: any) {
       setStatus(`Error: ${e.message}`);
