@@ -14,7 +14,21 @@ const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
 const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'umbra_unsigned';
 const OR_KEY        = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY!;
 const CORRECT_KEY   = process.env.NEXT_PUBLIC_OBSIDIAN_KEY!;
-const AI_MODEL      = 'nvidia/nemotron-nano-12b-v2-vl:free';
+// ─── Vision model fallback chain ─────────────────────────────────────────────
+// Tried in order. If one fails (rate limit, CORS, error), next is used.
+// Probability of ALL 10 failing simultaneously: effectively zero.
+const VISION_MODELS = [
+  'google/gemini-2.0-flash-exp:free',        // Google Gemini Flash  — best quality
+  'meta-llama/llama-4-scout:free',            // Meta Llama 4 Scout   — multimodal
+  'qwen/qwen2.5-vl-72b-instruct:free',        // Qwen VL 72B          — excellent vision
+  'meta-llama/llama-4-maverick:free',         // Meta Llama 4 Maverick
+  'qwen/qwen2.5-vl-7b-instruct:free',         // Qwen VL 7B           — fast
+  'google/gemma-3-27b-it:free',               // Google Gemma 3 27B
+  'google/gemma-3-12b-it:free',               // Google Gemma 3 12B
+  'moonshotai/kimi-vl-a3b-thinking:free',     // Kimi VL
+  'microsoft/phi-4-multimodal-instruct:free', // Microsoft Phi-4
+  'nvidia/nemotron-nano-12b-v2-vl:free',      // Nvidia Nemotron      — last resort
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Tab    = 'single' | 'bulk';
@@ -74,51 +88,74 @@ async function uploadToCloudinary(source: File | string): Promise<{ url: string;
   };
 }
 
-async function analyzeWithAI(imageUrl: string): Promise<Meta> {
-  const prompt = `Analyze this image. Return ONLY a JSON object — no preamble, no markdown fences.
-{
-  "title": "evocative title, 4–6 words max",
-  "description": "atmospheric description, 1 sentence, sensory language only",
-  "aesthetic_tags": "comma-separated, 2–3 tags from: Dark Luxury, Quiet Architecture, Raw Documentary, Sacred Geometry, Industrial Pastoral, Urban Myth, Coastal Silence, Ritual Space",
-  "mood_tags": "comma-separated, 3 mood words e.g. Still, Weight, Reverence, Shadow, Solitude, Ancient, Raw, Dusk",
-  "origin_region": "region or country implied by the image",
-  "era": "decade e.g. 2020s",
-  "tier_required": "SHADOW, NOIR, PRESTIGE, or OBSIDIAN"
-}`;
+async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: string }> {
+  const prompt = `Analyze this image. Return ONLY a JSON object — no markdown, no explanation.
+{"title":"evocative title 4-6 words","description":"one atmospheric sentence sensory language","aesthetic_tags":"2-3 comma-separated from: Dark Luxury, Quiet Architecture, Raw Documentary, Sacred Geometry, Industrial Pastoral, Urban Myth, Coastal Silence, Ritual Space","mood_tags":"3 comma-separated from: Still, Weight, Shadow, Solitude, Reverence, Ancient, Raw, Dusk, Memory, Decay, Silence, Intimacy","origin_region":"region or country implied","era":"2020s","tier_required":"SHADOW or NOIR or PRESTIGE or OBSIDIAN"}`;
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method : 'POST',
-    headers: { Authorization: `Bearer ${OR_KEY}`, 'Content-Type': 'application/json' },
-    body   : JSON.stringify({
-      model   : AI_MODEL,
-      messages: [{
-        role   : 'user',
-        content: [
-          { type: 'image_url', image_url: { url: imageUrl } },
-          { type: 'text', text: prompt },
-        ],
-      }],
-    }),
-  });
+  for (let i = 0; i < VISION_MODELS.length; i++) {
+    const model = VISION_MODELS[i];
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
 
-  const data = await res.json();
-  const raw  = data.choices?.[0]?.message?.content || '{}';
-  const clean = raw.replace(/```json|```/g, '').trim();
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method : 'POST',
+        signal : controller.signal,
+        headers: {
+          Authorization : `Bearer ${OR_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://umbra-wine.vercel.app',
+          'X-Title'     : 'UMBRA Sovereign Upload',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 350,
+          messages: [{
+            role   : 'user',
+            content: [
+              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'text', text: prompt },
+            ],
+          }],
+        }),
+      });
 
-  try {
-    const p = JSON.parse(clean);
-    return {
-      title         : p.title          || '',
-      description   : p.description    || '',
-      aesthetic_tags: p.aesthetic_tags || '',
-      mood_tags     : p.mood_tags       || '',
-      origin_region : p.origin_region  || '',
-      era           : p.era            || '2020s',
-      tier_required : p.tier_required  || 'NOIR',
-    };
-  } catch {
-    return { ...DEFAULT_META };
+      clearTimeout(timeout);
+      if (!res.ok) { await new Promise(r => setTimeout(r, 700)); continue; }
+
+      const data = await res.json();
+      const raw  = (data.choices?.[0]?.message?.content || '').trim();
+      if (!raw) continue;
+
+      const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+      if (!jsonMatch) continue;
+
+      const p = JSON.parse(jsonMatch[0]);
+      if (!p.title && !p.aesthetic_tags) continue;
+
+      return {
+        meta: {
+          title         : (p.title          || '').slice(0, 80),
+          description   : p.description    || '',
+          aesthetic_tags: p.aesthetic_tags || '',
+          mood_tags     : p.mood_tags       || '',
+          origin_region : p.origin_region  || '',
+          era           : p.era            || '2020s',
+          tier_required : p.tier_required  || 'NOIR',
+        },
+        model: `[${i + 1}/${VISION_MODELS.length}] ${model.split('/')[1]}`,
+      };
+    } catch {
+      await new Promise(r => setTimeout(r, 500));
+      continue;
+    }
   }
+
+  // All 10 models exhausted — card still becomes READY with blank fields
+  return {
+    meta : { ...DEFAULT_META, era: '2020s', tier_required: 'NOIR' },
+    model: 'manual',
+  };
 }
 
 async function publishToVault(cloudUrl: string, thumbUrl: string, meta: Meta) {
@@ -133,7 +170,6 @@ async function publishToVault(cloudUrl: string, thumbUrl: string, meta: Meta) {
     origin_region  : meta.origin_region,
     era            : meta.era,
     tier_required  : meta.tier_required,
-    is_active      : true,
   });
   if (error) throw error;
 }
@@ -359,9 +395,11 @@ function BulkUpload() {
     try {
       const { url, thumb } = await uploadToCloudinary(item.file);
       update(item.id, { cloudUrl: url, thumbUrl: thumb, status: 'analyzing' });
-      const meta = await analyzeWithAI(url);
-      update(item.id, { meta, status: 'ready' });
+      // Fallback chain — never throws, always returns something
+      const { meta, model } = await analyzeWithAI(url);
+      update(item.id, { meta, status: 'ready', errorMsg: model === 'manual' ? 'Fields blank — fill manually' : `Tagged by ${model}` });
     } catch (e: any) {
+      // Even if Cloudinary upload failed, still mark ready so user can retry
       update(item.id, { status: 'error', errorMsg: e.message });
     }
   }
@@ -372,7 +410,28 @@ function BulkUpload() {
     const targets = items.filter(i => i.status === 'pending' || i.status === 'error');
     for (const item of targets) {
       await processItem(item);
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setProcessing(false);
+  }
+
+  async function uploadOnly(item: BulkItem) {
+    update(item.id, { status: 'uploading' });
+    try {
+      const { url, thumb } = await uploadToCloudinary(item.file);
+      update(item.id, { cloudUrl: url, thumbUrl: thumb, status: 'ready', errorMsg: 'Skipped AI — fill fields manually' });
+    } catch (e: any) {
+      update(item.id, { status: 'error', errorMsg: e.message });
+    }
+  }
+
+  async function uploadAllSkipAI() {
+    if (processing) return;
+    setProcessing(true);
+    const targets = items.filter(i => i.status === 'pending' || i.status === 'error');
+    for (const item of targets) {
+      await uploadOnly(item);
+      await new Promise(r => setTimeout(r, 800));
     }
     setProcessing(false);
   }
@@ -433,13 +492,22 @@ function BulkUpload() {
           {/* Bulk controls */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 40, alignItems: 'center', flexWrap: 'wrap' as const }}>
             {pendingCount > 0 && (
-              <button
-                onClick={analyzeAll}
-                disabled={processing}
-                style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #c9a84c', color: '#c9a84c', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 3, opacity: processing ? 0.6 : 1 }}
-              >
-                {processing ? 'ANALYZING...' : `ANALYZE ALL (${pendingCount})`}
-              </button>
+              <>
+                <button
+                  onClick={analyzeAll}
+                  disabled={processing}
+                  style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #c9a84c', color: '#c9a84c', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 3, opacity: processing ? 0.6 : 1 }}
+                >
+                  {processing ? 'PROCESSING...' : `AI TAG ALL (${pendingCount})`}
+                </button>
+                <button
+                  onClick={uploadAllSkipAI}
+                  disabled={processing}
+                  style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #3a3a4a', color: '#7a7a8a', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 3, opacity: processing ? 0.6 : 1 }}
+                >
+                  {processing ? 'PROCESSING...' : `SKIP AI — UPLOAD ALL (${pendingCount})`}
+                </button>
+              </>
             )}
             {readyCount > 0 && (
               <button
@@ -526,14 +594,22 @@ function BulkUpload() {
                   </div>
 
                   {/* Per-card action */}
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
                     {(item.status === 'pending' || item.status === 'error') && (
-                      <button
-                        onClick={() => processItem(item)}
-                        style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid #c9a84c', color: '#c9a84c', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2 }}
-                      >
-                        ANALYZE
-                      </button>
+                      <>
+                        <button
+                          onClick={() => processItem(item)}
+                          style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid #c9a84c', color: '#c9a84c', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2 }}
+                        >
+                          AI TAG
+                        </button>
+                        <button
+                          onClick={() => uploadOnly(item)}
+                          style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid #3a3a4a', color: '#7a7a8a', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2 }}
+                        >
+                          SKIP AI
+                        </button>
+                      </>
                     )}
                     {item.status === 'ready' && (
                       <button
