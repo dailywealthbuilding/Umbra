@@ -121,7 +121,7 @@ async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: str
       });
 
       clearTimeout(timeout);
-      if (!res.ok) { await new Promise(r => setTimeout(r, 700)); continue; }
+      if (!res.ok) { await new Promise(r => setTimeout(r, 2000)); continue; }
 
       const data = await res.json();
       const raw  = (data.choices?.[0]?.message?.content || '').trim();
@@ -146,14 +146,15 @@ async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: str
         model: `[${i + 1}/${VISION_MODELS.length}] ${model.split('/')[1]}`,
       };
     } catch {
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 1500));
       continue;
     }
   }
 
-  // All 10 models exhausted — card still becomes READY with blank fields
+  // All 10 models exhausted — card becomes READY with auto-title so publish never fails
+  const stamp = new Date().toISOString().slice(0,10);
   return {
-    meta : { ...DEFAULT_META, era: '2020s', tier_required: 'NOIR' },
+    meta : { ...DEFAULT_META, title: `Vault Asset — ${stamp}`, era: '2020s', tier_required: 'NOIR' },
     model: 'manual',
   };
 }
@@ -410,7 +411,7 @@ function BulkUpload() {
     const targets = items.filter(i => i.status === 'pending' || i.status === 'error');
     for (const item of targets) {
       await processItem(item);
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 5000));
     }
     setProcessing(false);
   }
