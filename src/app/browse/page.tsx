@@ -9,15 +9,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const OBSIDIAN_KEY = process.env.NEXT_PUBLIC_OBSIDIAN_KEY!;
-
 const TIER_ORDER: Record<string, number> = {
   SHADOW: 0, NOIR: 1, PRESTIGE: 2, OBSIDIAN: 3,
 };
 
 const FILTERS = [
-  'ALL', 'DARK LUXURY', 'QUIET ARCHITECTURE', 'RAW DOCUMENTARY',
-  'INDUSTRIAL PASTORAL', 'SACRED GEOMETRY', 'NEON NOIR', 'CINEMATIC DECAY',
+  'ALL','DARK LUXURY','QUIET ARCHITECTURE','RAW DOCUMENTARY',
+  'INDUSTRIAL PASTORAL','SACRED GEOMETRY','NEON NOIR','CINEMATIC DECAY',
 ];
 
 type Asset = {
@@ -30,36 +28,23 @@ type Asset = {
   origin_region: string | null;
 };
 
-// ─── Sovereign bypass ────────────────────────────────────────────────────────
-function useSovereignStatus() {
-  const [isSovereign, setIsSovereign] = useState(false);
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('umbra_sovereign');
-      setIsSovereign(!!stored && !!OBSIDIAN_KEY && stored === OBSIDIAN_KEY);
-    } catch { /* localStorage blocked in some envs */ }
-  }, []);
-  return isSovereign;
-}
+type Profile = {
+  tier: string;
+  is_sovereign: boolean;
+  display_name: string | null;
+};
 
-// ─── Asset card ──────────────────────────────────────────────────────────────
-function AssetCard({
-  asset,
-  isGated,
-}: {
-  asset: Asset;
-  isGated: boolean;
-}) {
+// ── Asset card ───────────────────────────────────────────────────────────────
+function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
   const [hovered, setHovered] = useState(false);
   const tier = asset.tier_required ?? 'SHADOW';
 
   const tierColor =
     tier === 'SHADOW'   ? '#5a5a6a' :
     tier === 'NOIR'     ? '#c9a84c' :
-    tier === 'PRESTIGE' ? '#d4af37' :
-                          '#e8d5a3';
+    tier === 'PRESTIGE' ? '#d4af37' : '#e8d5a3';
 
-  const cardContent = (
+  const inner = (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -74,17 +59,14 @@ function AssetCard({
         aspectRatio: '3/4',
       }}
     >
-      {/* Image */}
       {asset.cloudinary_url && (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={asset.cloudinary_url}
           alt={asset.title ?? 'Vault Asset'}
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            display: 'block',
-            filter: isGated ? 'blur(18px) brightness(0.4)' : 'brightness(0.88)',
+            width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+            filter: isGated ? 'blur(18px) brightness(0.35)' : 'brightness(0.88)',
             transform: isGated ? 'scale(1.08)' : hovered ? 'scale(1.03)' : 'scale(1)',
             transition: 'filter 0.5s, transform 0.5s',
           }}
@@ -93,17 +75,12 @@ function AssetCard({
 
       {/* Tier badge */}
       <div style={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
+        position: 'absolute', top: 10, right: 10,
         fontFamily: "'Courier Prime', monospace",
-        fontSize: 9,
-        letterSpacing: 3,
-        color: tierColor,
+        fontSize: 9, letterSpacing: 3, color: tierColor,
         background: 'rgba(5,5,7,0.85)',
         border: `1px solid ${tierColor}`,
-        padding: '2px 8px',
-        textTransform: 'uppercase',
+        padding: '2px 8px', textTransform: 'uppercase',
       }}>
         {tier}
       </div>
@@ -111,69 +88,48 @@ function AssetCard({
       {/* Gated overlay */}
       {isGated && (
         <div style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 10,
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 10,
         }}>
           <div style={{
             fontFamily: "'Courier Prime', monospace",
-            fontSize: 9,
-            letterSpacing: 3,
-            color: '#c9a84c',
+            fontSize: 9, letterSpacing: 3, color: '#c9a84c',
             background: 'rgba(5,5,7,0.7)',
             border: '1px solid rgba(201,168,76,0.4)',
-            padding: '3px 10px',
-            textTransform: 'uppercase',
+            padding: '3px 10px', textTransform: 'uppercase',
           }}>
             {tier} +
           </div>
-          <Link
-            href="/access"
-            style={{
-              fontFamily: "'Courier Prime', monospace",
-              fontSize: 9,
-              letterSpacing: 3,
-              color: 'rgba(212,212,224,0.5)',
-              textDecoration: 'none',
-              textTransform: 'uppercase',
-            }}
-          >
+          <Link href="/access" style={{
+            fontFamily: "'Courier Prime', monospace",
+            fontSize: 9, letterSpacing: 3,
+            color: 'rgba(212,212,224,0.45)',
+            textDecoration: 'none', textTransform: 'uppercase',
+          }}>
             UNLOCK ACCESS
           </Link>
         </div>
       )}
 
-      {/* Hover reveal — title + tags */}
+      {/* Hover reveal */}
       {!isGated && hovered && (
         <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
+          position: 'absolute', bottom: 0, left: 0, right: 0,
           background: 'linear-gradient(transparent, rgba(5,5,7,0.95))',
           padding: '32px 14px 14px',
         }}>
           <div style={{
-            fontFamily: "'Cinzel', serif",
-            fontSize: 12,
-            fontWeight: 600,
-            color: '#d4d4e0',
-            marginBottom: 4,
-            letterSpacing: 0.5,
+            fontFamily: "'Cinzel', serif", fontSize: 12, fontWeight: 600,
+            color: '#d4d4e0', marginBottom: 4, letterSpacing: 0.5,
           }}>
             {asset.title ?? 'Vault Asset'}
           </div>
           {asset.aesthetic_tags && (
             <div style={{
               fontFamily: "'Courier Prime', monospace",
-              fontSize: 9,
-              letterSpacing: 2,
-              color: 'rgba(201,168,76,0.7)',
-              textTransform: 'uppercase',
+              fontSize: 9, letterSpacing: 2,
+              color: 'rgba(201,168,76,0.7)', textTransform: 'uppercase',
             }}>
               {asset.aesthetic_tags.split(',').slice(0, 2).join('  ·  ')}
             </div>
@@ -183,36 +139,48 @@ function AssetCard({
     </div>
   );
 
-  return isGated ? (
-    <div>{cardContent}</div>
-  ) : (
-    <Link href={`/asset/${asset.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-      {cardContent}
-    </Link>
-  );
+  return isGated
+    ? <div>{inner}</div>
+    : <Link href={`/asset/${asset.id}`} style={{ textDecoration: 'none', display: 'block' }}>{inner}</Link>;
 }
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function BrowsePage() {
-  const isSovereign = useSovereignStatus();
+  const [assets,       setAssets      ] = useState<Asset[]>([]);
+  const [profile,      setProfile     ] = useState<Profile | null>(null);
+  const [loading,      setLoading     ] = useState(true);
+  const [profileLoaded,setProfileLoaded] = useState(false);
+  const [search,       setSearch      ] = useState('');
+  const [debouncedQ,   setDebouncedQ  ] = useState('');
+  const [activeFilter, setActiveFilter] = useState('ALL');
 
-  const [assets,      setAssets     ] = useState<Asset[]>([]);
-  const [loading,     setLoading    ] = useState(true);
-  const [search,      setSearch     ] = useState('');
-  const [debouncedQ,  setDebouncedQ ] = useState('');
-  const [activeFilter,setActiveFilter] = useState('ALL');
-  const [userTier]                    = useState<string>('SHADOW'); // expand when auth added
+  // ── Load session + profile ─────────────────────────────────────────────
+  useEffect(() => {
+    async function loadProfile() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { setProfileLoaded(true); return; }
 
-  // Search debounce
+      const { data } = await supabase
+        .from('profiles')
+        .select('tier, is_sovereign, display_name')
+        .eq('id', session.user.id)
+        .single();
+
+      if (data) setProfile(data as Profile);
+      setProfileLoaded(true);
+    }
+    loadProfile();
+  }, []);
+
+  // ── Search debounce ────────────────────────────────────────────────────
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(search), 400);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Fetch assets
+  // ── Fetch assets ───────────────────────────────────────────────────────
   const fetchAssets = useCallback(async () => {
     setLoading(true);
-
     let query = supabase
       .from('assets')
       .select('id, title, cloudinary_url, aesthetic_tags, mood_tags, tier_required, origin_region')
@@ -228,7 +196,6 @@ export default function BrowsePage() {
         `origin_region.ilike.%${debouncedQ}%`
       );
     }
-
     if (activeFilter !== 'ALL') {
       query = query.ilike('aesthetic_tags', `%${activeFilter.toLowerCase()}%`);
     }
@@ -240,126 +207,97 @@ export default function BrowsePage() {
 
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
 
-  const userTierLevel = TIER_ORDER[userTier] ?? 0;
-
-  const visibleCount = isSovereign
+  // ── Derived state ──────────────────────────────────────────────────────
+  const isSovereign    = profile?.is_sovereign === true;
+  const userTierLevel  = TIER_ORDER[profile?.tier ?? 'SHADOW'] ?? 0;
+  const visibleCount   = isSovereign
     ? assets.length
     : assets.filter(a => (TIER_ORDER[a.tier_required ?? 'SHADOW'] ?? 0) <= userTierLevel).length;
 
+  const displayName = profile?.display_name ?? null;
+
   return (
     <div style={{
-      minHeight: '100vh',
-      background: '#050507',
-      color: '#d4d4e0',
-      fontFamily: "'DM Sans', sans-serif",
-      fontWeight: 300,
+      minHeight: '100vh', background: '#050507',
+      color: '#d4d4e0', fontFamily: "'DM Sans', sans-serif", fontWeight: 300,
     }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        background: 'rgba(5,5,7,0.97)',
-        backdropFilter: 'blur(20px)',
+        position: 'sticky', top: 0, zIndex: 100,
+        background: 'rgba(5,5,7,0.97)', backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
-        padding: '0 32px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 24,
-        height: 60,
+        padding: '0 32px', display: 'flex', alignItems: 'center',
+        gap: 24, height: 60,
       }}>
         <Link href="/" style={{
-          fontFamily: "'Cinzel', serif",
-          fontSize: 16,
-          fontWeight: 700,
-          color: '#c9a84c',
-          letterSpacing: 6,
-          textDecoration: 'none',
-          flexShrink: 0,
+          fontFamily: "'Cinzel', serif", fontSize: 16, fontWeight: 700,
+          color: '#c9a84c', letterSpacing: 6, textDecoration: 'none', flexShrink: 0,
         }}>
           UMBRA
         </Link>
 
-        {/* Search */}
         <div style={{ flex: 1, maxWidth: 480, position: 'relative' }}>
           <div style={{
-            position: 'absolute',
-            left: 14,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'rgba(201,168,76,0.4)',
-            fontSize: 12,
-            pointerEvents: 'none',
-          }}>
-            ◈
-          </div>
+            position: 'absolute', left: 14, top: '50%',
+            transform: 'translateY(-50%)', color: 'rgba(201,168,76,0.4)',
+            fontSize: 12, pointerEvents: 'none',
+          }}>◈</div>
           <input
-            type="text"
-            value={search}
+            type="text" value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search the vault — mood, location, aesthetic..."
             style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(201,168,76,0.12)',
-              borderRadius: 0,
-              padding: '8px 14px 8px 34px',
-              color: '#d4d4e0',
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 13,
-              fontWeight: 300,
-              outline: 'none',
-              letterSpacing: 0.3,
+              width: '100%', background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(201,168,76,0.12)', borderRadius: 0,
+              padding: '8px 14px 8px 34px', color: '#d4d4e0',
+              fontFamily: "'DM Sans', sans-serif", fontSize: 13,
+              fontWeight: 300, outline: 'none', letterSpacing: 0.3,
             }}
           />
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
-          {isSovereign && (
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
+          {/* Sovereign indicator */}
+          {profileLoaded && isSovereign && (
             <span style={{
-              fontFamily: "'Courier Prime', monospace",
-              fontSize: 9,
-              letterSpacing: 3,
-              color: '#c9a84c',
-              opacity: 0.7,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
+              fontFamily: "'Courier Prime', monospace", fontSize: 9,
+              letterSpacing: 3, color: '#c9a84c', opacity: 0.8,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <span style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: '#c9a84c',
-                display: 'inline-block',
-                boxShadow: '0 0 6px #c9a84c',
+                width: 6, height: 6, borderRadius: '50%',
+                background: '#c9a84c', display: 'inline-block',
+                boxShadow: '0 0 8px rgba(201,168,76,0.8)',
               }} />
               SOVEREIGN
             </span>
           )}
 
-          <Link href="/auth/signin" style={{
-            fontFamily: "'Courier Prime', monospace",
-            fontSize: 10,
-            letterSpacing: 3,
-            color: 'rgba(212,212,224,0.5)',
-            textDecoration: 'none',
-            textTransform: 'uppercase',
-            padding: '6px 14px',
-            border: '1px solid rgba(255,255,255,0.08)',
-          }}>
-            SIGN IN
-          </Link>
+          {/* Auth state */}
+          {profileLoaded && profile ? (
+            <span style={{
+              fontFamily: "'Courier Prime', monospace", fontSize: 10,
+              letterSpacing: 2, color: 'rgba(201,168,76,0.6)',
+              textTransform: 'uppercase',
+            }}>
+              {displayName ?? profile.tier}
+            </span>
+          ) : profileLoaded ? (
+            <Link href="/auth/login" style={{
+              fontFamily: "'Courier Prime', monospace", fontSize: 10,
+              letterSpacing: 3, color: 'rgba(212,212,224,0.5)',
+              textDecoration: 'none', textTransform: 'uppercase',
+              padding: '6px 14px', border: '1px solid rgba(255,255,255,0.08)',
+            }}>
+              SIGN IN
+            </Link>
+          ) : null}
 
           <Link href="/access" style={{
-            fontFamily: "'Courier Prime', monospace",
-            fontSize: 10,
-            letterSpacing: 3,
-            color: '#050507',
-            background: '#c9a84c',
-            textDecoration: 'none',
-            textTransform: 'uppercase',
+            fontFamily: "'Courier Prime', monospace", fontSize: 10,
+            letterSpacing: 3, color: '#050507', background: '#c9a84c',
+            textDecoration: 'none', textTransform: 'uppercase',
             padding: '6px 14px',
           }}>
             UNLOCK ACCESS
@@ -367,114 +305,72 @@ export default function BrowsePage() {
         </div>
       </header>
 
-      {/* ── Filter tabs ────────────────────────────────────────────────────── */}
+      {/* ── Filter tabs ──────────────────────────────────────────────────── */}
       <div style={{
         borderBottom: '1px solid rgba(201,168,76,0.07)',
-        padding: '0 32px',
-        display: 'flex',
-        gap: 0,
-        overflowX: 'auto',
-        scrollbarWidth: 'none',
+        padding: '0 32px', display: 'flex', gap: 0,
+        overflowX: 'auto', scrollbarWidth: 'none',
       }}>
         {FILTERS.map(f => (
-          <button
-            key={f}
-            onClick={() => setActiveFilter(f)}
-            style={{
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 10,
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              color: activeFilter === f ? '#c9a84c' : 'rgba(212,212,224,0.4)',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeFilter === f ? '1px solid #c9a84c' : '1px solid transparent',
-              padding: '14px 16px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'color 0.2s',
-              fontWeight: 300,
-            }}
-          >
+          <button key={f} onClick={() => setActiveFilter(f)} style={{
+            fontFamily: "'DM Sans', sans-serif", fontSize: 10,
+            letterSpacing: 2, textTransform: 'uppercase',
+            color: activeFilter === f ? '#c9a84c' : 'rgba(212,212,224,0.4)',
+            background: 'none', border: 'none',
+            borderBottom: activeFilter === f ? '1px solid #c9a84c' : '1px solid transparent',
+            padding: '14px 16px', cursor: 'pointer',
+            whiteSpace: 'nowrap', transition: 'color 0.2s', fontWeight: 300,
+          }}>
             {f}
           </button>
         ))}
       </div>
 
-      {/* ── Vault body ─────────────────────────────────────────────────────── */}
+      {/* ── Main ─────────────────────────────────────────────────────────── */}
       <main style={{ padding: '40px 32px 80px', maxWidth: 1400, margin: '0 auto' }}>
-
-        {/* Section header */}
         <div style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'space-between',
-          marginBottom: 28,
+          display: 'flex', alignItems: 'baseline',
+          justifyContent: 'space-between', marginBottom: 28,
         }}>
           <div>
             <div style={{
-              fontFamily: "'Cinzel', serif",
-              fontSize: 11,
-              letterSpacing: 6,
-              color: 'rgba(201,168,76,0.5)',
-              textTransform: 'uppercase',
-              marginBottom: 4,
-            }}>
-              THE VAULT
-            </div>
+              fontFamily: "'Cinzel', serif", fontSize: 11,
+              letterSpacing: 6, color: 'rgba(201,168,76,0.5)',
+              textTransform: 'uppercase', marginBottom: 4,
+            }}>THE VAULT</div>
             <div style={{
-              fontFamily: "'Courier Prime', monospace",
-              fontSize: 11,
-              letterSpacing: 2,
-              color: 'rgba(212,212,224,0.3)',
+              fontFamily: "'Courier Prime', monospace", fontSize: 11,
+              letterSpacing: 2, color: 'rgba(212,212,224,0.3)',
             }}>
               {loading ? 'loading...' : `${visibleCount} pieces visible`}
             </div>
           </div>
-
           {!isSovereign && (
             <Link href="/access" style={{
-              fontFamily: "'Courier Prime', monospace",
-              fontSize: 10,
-              letterSpacing: 3,
-              color: 'rgba(201,168,76,0.6)',
-              textDecoration: 'none',
-              textTransform: 'uppercase',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
+              fontFamily: "'Courier Prime', monospace", fontSize: 10,
+              letterSpacing: 3, color: 'rgba(201,168,76,0.6)',
+              textDecoration: 'none', textTransform: 'uppercase',
             }}>
               UNLOCK MORE PIECES →
             </Link>
           )}
         </div>
 
-        {/* Grid */}
         {loading ? (
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 300,
-            fontFamily: "'Courier Prime', monospace",
-            fontSize: 11,
-            letterSpacing: 4,
-            color: 'rgba(201,168,76,0.3)',
-            textTransform: 'uppercase',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            height: 300, fontFamily: "'Courier Prime', monospace",
+            fontSize: 11, letterSpacing: 4,
+            color: 'rgba(201,168,76,0.3)', textTransform: 'uppercase',
           }}>
             entering the shadow...
           </div>
         ) : assets.length === 0 ? (
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 300,
-            fontFamily: "'Courier Prime', monospace",
-            fontSize: 11,
-            letterSpacing: 4,
-            color: 'rgba(212,212,224,0.2)',
-            textTransform: 'uppercase',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            height: 300, fontFamily: "'Courier Prime', monospace",
+            fontSize: 11, letterSpacing: 4,
+            color: 'rgba(212,212,224,0.2)', textTransform: 'uppercase',
           }}>
             the vault is silent
           </div>
@@ -487,13 +383,7 @@ export default function BrowsePage() {
             {assets.map(asset => {
               const assetTierLevel = TIER_ORDER[asset.tier_required ?? 'SHADOW'] ?? 0;
               const isGated = !isSovereign && assetTierLevel > userTierLevel;
-              return (
-                <AssetCard
-                  key={asset.id}
-                  asset={asset}
-                  isGated={isGated}
-                />
-              );
+              return <AssetCard key={asset.id} asset={asset} isGated={isGated} />;
             })}
           </div>
         )}
