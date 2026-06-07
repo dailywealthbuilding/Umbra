@@ -179,11 +179,20 @@ async function publishToVault(cloudUrl: string, thumbUrl: string, meta: Meta) {
 export default function SovereignUpload() {
   const [key,           setKey          ] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('umbra_sovereign');
+    if (stored && stored === CORRECT_KEY) setAuthenticated(true);
+  }, []);
   const [tab,           setTab          ] = useState<Tab>('single');
 
   function handleAuth() {
-    if (key === CORRECT_KEY) setAuthenticated(true);
-    else alert('Access denied. The vault remains closed.');
+    if (key === CORRECT_KEY) {
+      setAuthenticated(true);
+      localStorage.setItem('umbra_sovereign', CORRECT_KEY);
+    } else {
+      alert('Access denied. The vault remains closed.');
+    }
   }
 
   if (!authenticated) return <AuthGate keyVal={key} setKey={setKey} onAuth={handleAuth} />;
