@@ -50,6 +50,8 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
       src={asset.cloudinary_url}
       alt={asset.title ?? 'Vault Asset'}
       style={{
+        position: 'absolute' as const,
+        top: 0, left: 0,
         width: '100%',
         height: '100%',
         objectFit: 'cover' as const,
@@ -75,7 +77,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
         cursor: isGated ? 'default' : 'pointer',
         transition: 'border-color 0.3s, transform 0.3s',
         transform: hovered && !isGated ? 'translateY(-2px)' : 'none',
-        aspectRatio: '3/4',
+        paddingTop: '133.33%',
       }}
     >
       {imgEl}
@@ -101,7 +103,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
       {isGated && (
         <div style={{
           position: 'absolute' as const,
-          inset: 0,
+          top: 0, right: 0, bottom: 0, left: 0,
           display: 'flex',
           flexDirection: 'column' as const,
           alignItems: 'center',
@@ -269,7 +271,7 @@ export default function BrowsePage() {
         top: 0,
         zIndex: 100,
         background: 'rgba(5,5,7,0.97)',
-        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
         padding: '0 32px',
         display: 'flex',
