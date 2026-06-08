@@ -470,6 +470,41 @@ function BulkUpload() {
     setItems(prev => prev.filter(i => i.status !== 'published'));
   }
 
+  // ── Retry AI on already-uploaded cloudinary URL ───────────────────────────
+  async function retryAI(item: BulkItem) {
+    if (!item.cloudUrl) return;
+    update(item.id, { status: 'analyzing', errorMsg: '' });
+    try {
+      const { meta, model } = await analyzeWithAI(item.cloudUrl);
+      update(item.id, {
+        meta,
+        status: 'ready',
+        errorMsg: model === 'manual'
+          ? 'Fields blank — fill manually'
+          : `Tagged by ${model}`,
+      });
+    } catch (e: any) {
+      update(item.id, { status: 'ready', errorMsg: `Retry failed: ${e.message}` });
+    }
+  }
+
+  // ── Retry all failed AI tags at once ─────────────────────────────────────
+  async function retryAllFailed() {
+    if (processing) return;
+    setProcessing(true);
+    const targets = items.filter(
+      i => i.status === 'ready' && (
+        i.errorMsg === 'Fields blank — fill manually' ||
+        i.errorMsg === 'Skipped AI — fill fields manually'
+      )
+    );
+    for (const item of targets) {
+      await retryAI(item);
+      await new Promise(r => setTimeout(r, 4000));
+    }
+    setProcessing(false);
+  }
+
   function pickFiles() {
     const i = document.createElement('input');
     i.type = 'file'; i.accept = 'image/*'; i.multiple = true;
@@ -480,6 +515,12 @@ function BulkUpload() {
   const readyCount     = items.filter(i => i.status === 'ready').length;
   const publishedCount = items.filter(i => i.status === 'published').length;
   const pendingCount   = items.filter(i => i.status === 'pending' || i.status === 'error').length;
+  const retryCount     = items.filter(i =>
+    i.status === 'ready' && (
+      i.errorMsg === 'Fields blank — fill manually' ||
+      i.errorMsg === 'Skipped AI — fill fields manually'
+    )
+  ).length;
 
   const labelStyle = { fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 4 };
   const inputStyle = { width: '100%', background: '#050507', border: '1px solid #2a2a3a', color: '#d4d4e0', padding: '7px 10px', fontFamily: "'DM Sans', sans-serif", fontSize: 12, outline: 'none', boxSizing: 'border-box' as const };
@@ -525,6 +566,15 @@ function BulkUpload() {
                 style={{ padding: '10px 24px', background: '#c9a84c', border: 'none', color: '#050507', cursor: 'pointer', fontFamily: "'Cinzel', serif", fontSize: 10, letterSpacing: 3, fontWeight: 700 }}
               >
                 PUBLISH ALL READY ({readyCount})
+              </button>
+            )}
+            {retryCount > 0 && (
+              <button
+                onClick={retryAllFailed}
+                disabled={processing}
+                style={{ padding: '10px 24px', background: 'transparent', border: '1px solid #4a8cf5', color: '#4a8cf5', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 10, letterSpacing: 3, opacity: processing ? 0.6 : 1 }}
+              >
+                {processing ? 'RETRYING...' : `RETRY AI (${retryCount})`}
               </button>
             )}
             {publishedCount > 0 && (
@@ -622,12 +672,24 @@ function BulkUpload() {
                       </>
                     )}
                     {item.status === 'ready' && (
-                      <button
-                        onClick={() => publishItem(item.id)}
-                        style={{ flex: 1, padding: '8px', background: '#c9a84c', border: 'none', color: '#050507', cursor: 'pointer', fontFamily: "'Cinzel', serif", fontSize: 9, letterSpacing: 2, fontWeight: 700 }}
-                      >
-                        PUBLISH
-                      </button>
+                      <>
+                        {/* Retry AI if fields are blank or were skipped */}
+                        {(item.errorMsg === 'Fields blank — fill manually' ||
+                          item.errorMsg === 'Skipped AI — fill fields manually') && (
+                          <button
+                            onClick={() => retryAI(item)}
+                            style={{ flex: 1, padding: '8px', background: 'transparent', border: '1px solid #4a8cf5', color: '#4a8cf5', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2 }}
+                          >
+                            RETRY AI
+                          </button>
+                        )}
+                        <button
+                          onClick={() => publishItem(item.id)}
+                          style={{ flex: 1, padding: '8px', background: '#c9a84c', border: 'none', color: '#050507', cursor: 'pointer', fontFamily: "'Cinzel', serif", fontSize: 9, letterSpacing: 2, fontWeight: 700 }}
+                        >
+                          PUBLISH
+                        </button>
+                      </>
                     )}
                     {item.status === 'published' && (
                       <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#4caf87', letterSpacing: 2 }}>IN THE VAULT</span>
