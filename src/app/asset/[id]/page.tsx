@@ -1,238 +1,418 @@
-'use client'
-import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
+import Link from 'next/link';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL  ?? '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+);
+
+const TIER_ORDER: Record<string, number> = {
+  SHADOW: 0, NOIR: 1, PRESTIGE: 2, OBSIDIAN: 3,
+};
 
 type Asset = {
-  id: string
-  title: string
-  description: string | null
-  cloudinary_url: string
-  thumbnail_url: string
-  aesthetic_tags: string[]
-  mood_tags: string[]
-  color_palette: string[]
-  origin_region: string | null
-  era: string | null
-  asset_type: string
-  tier_required: string
-  license: string
-  download_count: number
-  view_count: number
-  is_featured: boolean
-  is_sovereign_marked: boolean
-  sovereign_note: string | null
-  vintage_score: number
-  created_at: string
+  id: string;
+  title: string | null;
+  description: string | null;
+  cloudinary_url: string;
+  thumbnail_url: string | null;
+  aesthetic_tags: string[] | string | null;
+  mood_tags: string[] | string | null;
+  tier_required: string;
+  origin_region: string | null;
+  era: string | null;
+  license: string | null;
+  download_count: number | null;
+};
+
+type Profile = {
+  tier: string;
+  is_sovereign: boolean;
+  display_name: string | null;
+};
+
+// ── Shared helpers ─────────────────────────────────────────────────────────
+const GOLD   = '#c9a84c';
+const BG     = '#050507';
+const TEXT   = '#d4d4e0';
+const MUTED  = 'rgba(212,212,224,0.4)';
+const MONO   = 'monospace';
+const SERIF  = 'Georgia, serif';
+
+async function fetchProfile(uid: string): Promise<Profile | null> {
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('tier, is_sovereign, display_name')
+      .eq('id', uid)
+      .single();
+    return (data as Profile) ?? null;
+  } catch (_) { return null; }
 }
 
-type UserTier = 'access' | 'noir' | 'prestige' | 'obsidian' | null
-
-const TIER_ORDER: Record<string, number> = { access: 0, noir: 1, prestige: 2, obsidian: 3 }
-const TIER_COLORS: Record<string, string> = {
-  access: '90,90,106', noir: '201,168,76', prestige: '139,92,246', obsidian: '13,148,136'
+function parseTags(raw: string[] | string | null): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  return raw.split(',').map(t => t.trim()).filter(Boolean);
 }
 
+// ── Asset Detail Page ──────────────────────────────────────────────────────
 export default function AssetPage() {
-  const params = useParams()
-  const router = useRouter()
-  const id = params?.id as string
+  const params = useParams();
+  const id     = params?.id as string;
 
-  const [asset, setAsset] = useState<Asset | null>(null)
-  const [related, setRelated] = useState<Asset[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userTier, setUserTier] = useState<UserTier>(null)
-  const [userId, setUserId] = useState<string | null>(null)
-  const [downloading, setDownloading] = useState(false)
-  const [downloaded, setDownloaded] = useState(false)
-  const [fullscreen, setFullscreen] = useState(false)
+  const [asset,        setAsset       ] = useState<Asset | null>(null);
+  const [profile,      setProfile     ] = useState<Profile | null>(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [assetLoading, setAssetLoading] = useState(true);
+  const [mounted,      setMounted     ] = useState(false);
+  const [downloading,  setDownloading ] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  useEffect(() => { setMounted(true); }, []);
 
+  // ── AUTH — same getUser() pattern as browse page ───────────────────────
   useEffect(() => {
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setUserId(user.id)
-        const { data: sub } = await supabase
-          .from('subscriptions').select('tier')
-          .eq('user_id', user.id).eq('status', 'active').single()
-        if (sub) setUserTier(sub.tier as UserTier)
-        else setUserTier('access')
-      }
-      const { data } = await supabase.from('assets').select('*').eq('id', id).eq('status', 'active').single()
-      if (!data) { router.push('/browse'); return }
-      setAsset(data)
-      // View count bump (fire and forget)
-      supabase.from('assets').update({ view_count: (data.view_count || 0) + 1 }).eq('id', id)
-      // Related assets
-      if (data.aesthetic_tags?.length) {
-        const { data: rel } = await supabase.from('assets')
-          .select('id,title,thumbnail_url,aesthetic_tags,tier_required,origin_region')
-          .eq('status', 'active')
-          .contains('aesthetic_tags', [data.aesthetic_tags[0]])
-          .neq('id', id)
-          .limit(6)
-        if (rel) setRelated(rel as Asset[])
-      }
-      setLoading(false)
+    if (!mounted) return;
+    let alive = true;
+
+    async function initialLoad() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!alive) return;
+        if (user?.id) {
+          const p = await fetchProfile(user.id);
+          if (alive && p) setProfile(p);
+        }
+      } catch (_) {}
+      finally { if (alive) setProfileReady(true); }
     }
-    if (id) init()
-  }, [id])
+    initialLoad();
 
-  function canAccess(assetTier: string): boolean {
-    if (!userTier) return assetTier === 'access'
-    return TIER_ORDER[userTier] >= TIER_ORDER[assetTier]
-  }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!alive) return;
+        if (event === 'SIGNED_OUT') { setProfile(null); return; }
+        if (
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') &&
+          session?.user?.id
+        ) {
+          const p = await fetchProfile(session.user.id);
+          if (alive && p) setProfile(p);
+        }
+      }
+    );
 
+    return () => { alive = false; subscription.unsubscribe(); };
+  }, [mounted]);
+
+  // ── ASSET LOAD ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mounted || !id) return;
+
+    async function loadAsset() {
+      try {
+        const { data, error } = await supabase
+          .from('assets')
+          .select('id,title,description,cloudinary_url,thumbnail_url,aesthetic_tags,mood_tags,tier_required,origin_region,era,license,download_count')
+          .eq('id', id)
+          .single();
+        if (!error && data) setAsset(data as Asset);
+      } catch (_) {}
+      finally { setAssetLoading(false); }
+    }
+    loadAsset();
+  }, [mounted, id]);
+
+  // ── DOWNLOAD ───────────────────────────────────────────────────────────
   async function handleDownload() {
-    if (!asset) return
-    if (!userId) { router.push('/auth/login?redirect=/asset/' + id); return }
-    if (!canAccess(asset.tier_required)) { router.push('/subscribe'); return }
-    setDownloading(true)
+    if (!asset || isGated || downloading) return;
+    setDownloading(true);
     try {
-      const response = await fetch(asset.cloudinary_url)
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `umbra_${asset.title.toLowerCase().replace(/\s+/g, '_')}.${asset.asset_type === 'video' ? 'mp4' : 'jpg'}`
-      a.click()
-      URL.revokeObjectURL(url)
-      supabase.from('assets').update({ download_count: (asset.download_count || 0) + 1 }).eq('id', id)
-      setDownloaded(true)
-    } catch {
-      alert('Download failed. Try again.')
-    }
-    setDownloading(false)
+      // Increment download count
+      await supabase
+        .from('assets')
+        .update({ download_count: (asset.download_count ?? 0) + 1 })
+        .eq('id', asset.id);
+
+      // Trigger browser download
+      const link  = document.createElement('a');
+      link.href   = asset.cloudinary_url;
+      link.target = '_blank';
+      link.rel    = 'noopener noreferrer';
+      link.click();
+    } catch (_) {}
+    finally { setDownloading(false); }
   }
 
-  if (loading) return (
-    <div style={{ background: '#050507', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 8, color: '#8a6f33', textTransform: 'uppercase', animation: 'pulse 1.5s ease infinite' }}>Opening chamber...</p>
-    </div>
-  )
+  if (!mounted) return null;
 
-  if (!asset) return null
+  // ── GATE LOGIC ─────────────────────────────────────────────────────────
+  const isSovereign   = profile?.is_sovereign === true;
+  const userTierLevel = TIER_ORDER[(profile?.tier ?? 'SHADOW').toUpperCase()] ?? 0;
+  const assetTier     = (asset?.tier_required ?? 'SHADOW').toUpperCase();
+  const safeAssetTier = TIER_ORDER[assetTier] !== undefined ? assetTier : 'SHADOW';
+  const assetTierLvl  = TIER_ORDER[safeAssetTier] ?? 0;
 
-  const isLocked = !canAccess(asset.tier_required)
-  const tierRgb = TIER_COLORS[asset.tier_required] || '90,90,106'
+  // Not profileReady yet → don't gate (avoid flash of locked state)
+  // Not signed in → all assets require account
+  // Signed in → check tier match
+  const isGated = !profileReady
+    ? false
+    : !profile
+      ? true
+      : !isSovereign && assetTierLvl > userTierLevel;
+
+  const tierColor = safeAssetTier === 'SHADOW' ? '#5a5a6a' : GOLD;
+  const aestheticTags = parseTags(asset?.aesthetic_tags ?? null);
+  const moodTags      = parseTags(asset?.mood_tags ?? null);
+
+  // ── LOADING STATE ──────────────────────────────────────────────────────
+  if (assetLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh', background: BG,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <p style={{
+          fontFamily: MONO, fontSize: 10, letterSpacing: 4,
+          color: 'rgba(201,168,76,0.3)',
+        }}>
+          ENTERING THE VAULT...
+        </p>
+      </div>
+    );
+  }
+
+  if (!asset) {
+    return (
+      <div style={{
+        minHeight: '100vh', background: BG,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: 16,
+      }}>
+        <p style={{ fontFamily: SERIF, fontSize: 18, color: TEXT }}>
+          Asset not found.
+        </p>
+        <Link href="/browse" style={{
+          fontFamily: MONO, fontSize: 10, letterSpacing: 3,
+          color: GOLD, textDecoration: 'none',
+        }}>
+          ← THE VAULT
+        </Link>
+      </div>
+    );
+  }
+
+  // ── UNLOCK TIER LABEL ──────────────────────────────────────────────────
+  const unlockLabel = safeAssetTier === 'SHADOW'
+    ? 'SHADOW'
+    : safeAssetTier === 'NOIR'
+      ? 'NOIR'
+      : safeAssetTier === 'PRESTIGE'
+        ? 'PRESTIGE'
+        : 'OBSIDIAN';
 
   return (
-    <div style={{ background: '#050507', minHeight: '100vh', color: '#d4d4e0', fontFamily: "'DM Sans',sans-serif", fontWeight: 300 }}>
-      <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Courier+Prime:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+    <div style={{
+      minHeight: '100vh', background: BG,
+      display: 'flex', flexDirection: 'column',
+    }}>
 
-      {/* NAV */}
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(5,5,7,0.97)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(201,168,76,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', height: 58 }}>
-        <Link href="/" style={{ fontFamily: "'Cinzel',serif", fontSize: 16, fontWeight: 700, color: '#c9a84c', letterSpacing: 4, textDecoration: 'none' }}>UMBRA</Link>
-        <Link href="/browse" style={{ fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: 'rgba(212,212,224,0.4)', textDecoration: 'none' }}>&larr; The Vault</Link>
-      </nav>
+      {/* ── Top nav ── */}
+      <header style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+        padding: '18px 32px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: 'linear-gradient(rgba(5,5,7,0.9), transparent)',
+        pointerEvents: 'none',
+      }}>
+        <Link href="/" style={{
+          fontFamily: SERIF, fontSize: 14, fontWeight: 700,
+          color: GOLD, letterSpacing: 6, textDecoration: 'none',
+          pointerEvents: 'auto',
+        }}>
+          UMBRA
+        </Link>
+        <Link href="/browse" style={{
+          fontFamily: MONO, fontSize: 9, letterSpacing: 3,
+          color: MUTED, textDecoration: 'none', pointerEvents: 'auto',
+        }}>
+          ← THE VAULT
+        </Link>
+      </header>
 
-      {/* MAIN LAYOUT */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', minHeight: 'calc(100vh - 58px)', gap: 0 }}>
+      {/* ── Main layout ── */}
+      <div style={{
+        flex: 1, display: 'flex',
+        minHeight: '100vh',
+      }}>
 
-        {/* LEFT — ASSET DISPLAY */}
-        <div style={{ position: 'relative', background: '#030305', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '85vh', overflow: 'hidden', cursor: isLocked ? 'default' : 'zoom-in' }} onClick={() => !isLocked && setFullscreen(true)}>
-          <img
-            src={isLocked ? asset.thumbnail_url : (asset.cloudinary_url || asset.thumbnail_url)}
-            alt={asset.title}
-            style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', filter: isLocked ? 'blur(20px) brightness(0.3)' : 'none', transition: 'filter 0.4s' }}
-          />
+        {/* ── Image panel ── */}
+        <div style={{
+          flex: 1,
+          position: 'relative',
+          overflow: 'hidden',
+          minHeight: '100vh',
+        }}>
+          {/* Full image */}
+          <div style={{
+            position: 'absolute',
+            top: 0, right: 0, bottom: 0, left: 0,
+            backgroundImage: `url(${asset.cloudinary_url})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: isGated ? 'blur(22px) brightness(0.28)' : 'brightness(0.9)',
+            transform: isGated ? 'scale(1.1)' : 'scale(1)',
+            transition: 'filter 0.6s, transform 0.6s',
+          }} />
 
-          {isLocked && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 11, letterSpacing: 6, color: `rgba(${tierRgb},0.8)`, textTransform: 'uppercase', textAlign: 'center', marginBottom: 8 }}>
-                Requires {asset.tier_required.toUpperCase()} access
-              </div>
-              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontStyle: 'italic', color: 'rgba(212,212,224,0.4)', textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
-                This piece lives in a deeper chamber of the vault.
-              </p>
-              <Link href="/subscribe" style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 4, color: `rgb(${tierRgb})`, border: `1px solid rgba(${tierRgb},0.4)`, padding: '12px 28px', textDecoration: 'none', textTransform: 'uppercase', marginTop: 8 }}>
-                Unlock {asset.tier_required.toUpperCase()}
-              </Link>
-            </div>
+          {/* Subtle vignette */}
+          {!isGated && (
+            <div style={{
+              position: 'absolute',
+              top: 0, right: 0, bottom: 0, left: 0,
+              background: 'linear-gradient(to right, transparent 60%, rgba(5,5,7,0.6) 100%)',
+            }} />
           )}
 
-          {!isLocked && (
-            <div style={{ position: 'absolute', bottom: 16, right: 16, fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 3, color: 'rgba(201,168,76,0.3)', textTransform: 'uppercase' }}>
-              Click to expand
+          {/* ── Gated overlay ── */}
+          {isGated && (
+            <div style={{
+              position: 'absolute',
+              top: 0, right: 0, bottom: 0, left: 0,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 16,
+            }}>
+              <p style={{
+                fontFamily: MONO, fontSize: 10, letterSpacing: 5,
+                color: 'rgba(212,212,224,0.5)', margin: 0,
+                textTransform: 'uppercase',
+              }}>
+                REQUIRES {unlockLabel} ACCESS
+              </p>
+              <p style={{
+                fontFamily: SERIF, fontSize: 14, fontStyle: 'italic',
+                color: 'rgba(212,212,224,0.3)', margin: 0,
+              }}>
+                This piece lives in a deeper chamber of the vault.
+              </p>
+              <Link
+                href={profile ? '/access' : '/auth/login'}
+                style={{
+                  marginTop: 8,
+                  fontFamily: MONO, fontSize: 9, letterSpacing: 4,
+                  color: TEXT,
+                  border: '1px solid rgba(212,212,224,0.25)',
+                  padding: '10px 28px',
+                  textDecoration: 'none',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {profile ? `UNLOCK ${unlockLabel}` : 'SIGN IN'}
+              </Link>
             </div>
           )}
         </div>
 
-        {/* RIGHT — METADATA PANEL */}
-        <div style={{ borderLeft: '1px solid rgba(201,168,76,0.07)', padding: '48px 32px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
+        {/* ── Right info panel ── */}
+        <div style={{
+          width: 300,
+          minWidth: 280,
+          background: 'rgba(5,5,7,0.97)',
+          borderLeft: '1px solid rgba(201,168,76,0.07)',
+          padding: '80px 28px 40px',
+          display: 'flex', flexDirection: 'column', gap: 0,
+          overflowY: 'auto',
+        }}>
 
-          {/* TIER BADGE */}
-          <div style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 4, color: `rgba(${tierRgb},0.8)`, border: `1px solid rgba(${tierRgb},0.25)`, padding: '4px 12px', textTransform: 'uppercase', alignSelf: 'flex-start' }}>
-            {asset.tier_required === 'access' ? 'Open Vault' : asset.tier_required.toUpperCase() + ' + tier'}
+          {/* Tier badge */}
+          <div style={{
+            display: 'inline-flex', marginBottom: 24,
+            border: `1px solid ${tierColor}`,
+            padding: '3px 10px',
+            alignSelf: 'flex-start',
+          }}>
+            <span style={{
+              fontFamily: MONO, fontSize: 9, letterSpacing: 3,
+              color: tierColor, textTransform: 'uppercase',
+            }}>
+              {safeAssetTier} + TIER
+            </span>
           </div>
 
-          {/* TITLE */}
-          <div>
-            <h1 style={{ fontFamily: "'Cinzel',serif", fontSize: 'clamp(20px,2.5vw,28px)', fontWeight: 700, color: '#d4d4e0', lineHeight: 1.2, marginBottom: 12 }}>
-              {asset.title}
-            </h1>
-            {asset.description && (
-              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontStyle: 'italic', color: '#7a7a8a', lineHeight: 1.7 }}>
-                {asset.description}
-              </p>
-            )}
-          </div>
+          {/* Title */}
+          <h1 style={{
+            fontFamily: SERIF, fontSize: 26, fontWeight: 400,
+            color: TEXT, margin: '0 0 16px',
+            lineHeight: 1.3, letterSpacing: 0.5,
+          }}>
+            {asset.title ?? 'Vault Asset'}
+          </h1>
 
-          {/* DIVIDER */}
-          <div style={{ height: 1, background: 'linear-gradient(90deg,rgba(201,168,76,0.15),transparent)' }} />
-
-          {/* METADATA */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {asset.origin_region && (
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase' }}>Region</span>
-                <span style={{ fontSize: 12, color: '#9a9aaa' }}>{asset.origin_region}</span>
-              </div>
-            )}
-            {asset.era && (
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase' }}>Era</span>
-                <span style={{ fontSize: 12, color: '#9a9aaa' }}>{asset.era}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase' }}>License</span>
-              <span style={{ fontSize: 12, color: asset.license === 'cc0' ? 'rgba(13,148,136,0.8)' : '#9a9aaa', textTransform: 'uppercase', letterSpacing: 1 }}>{asset.license}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase' }}>Downloads</span>
-              <span style={{ fontFamily: "'Courier Prime',monospace", fontSize: 11, color: '#7a7a8a' }}>{asset.download_count || 0}</span>
-            </div>
-          </div>
-
-          {/* AESTHETIC TAGS */}
-          {asset.aesthetic_tags?.length > 0 && (
-            <div>
-              <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase', marginBottom: 10 }}>Aesthetic</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {asset.aesthetic_tags.map((tag, i) => (
-                  <Link key={i} href={`/browse?filter=${encodeURIComponent(tag)}`}
-                    style={{ fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 2, color: 'rgba(201,168,76,0.6)', border: '1px solid rgba(201,168,76,0.15)', padding: '3px 10px', textDecoration: 'none', textTransform: 'uppercase' }}>
-                    {tag}
-                  </Link>
-                ))}
-              </div>
-            </div>
+          {/* Description */}
+          {asset.description && (
+            <p style={{
+              fontFamily: SERIF, fontSize: 13, fontStyle: 'italic',
+              color: MUTED, margin: '0 0 32px', lineHeight: 1.7,
+            }}>
+              {asset.description}
+            </p>
           )}
 
-          {/* MOOD TAGS */}
-          {asset.mood_tags?.length > 0 && (
-            <div>
-              <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase', marginBottom: 10 }}>Mood</p>
+          {/* Divider */}
+          <div style={{ height: 1, background: 'rgba(201,168,76,0.07)', marginBottom: 24 }} />
+
+          {/* Metadata rows */}
+          {[
+            ['REGION',    asset.origin_region ?? '—'],
+            ['ERA',       asset.era ?? '2020s'],
+            ['LICENSE',   asset.license ?? 'CCO'],
+            ['DOWNLOADS', String(asset.download_count ?? 0)],
+          ].map(([label, value]) => (
+            <div key={label} style={{
+              display: 'flex', justifyContent: 'space-between',
+              alignItems: 'baseline', marginBottom: 14,
+            }}>
+              <span style={{
+                fontFamily: MONO, fontSize: 9, letterSpacing: 3,
+                color: 'rgba(212,212,224,0.3)', textTransform: 'uppercase',
+              }}>
+                {label}
+              </span>
+              <span style={{
+                fontFamily: MONO, fontSize: 10,
+                color: label === 'LICENSE' ? '#4a8cf5' : MUTED,
+                letterSpacing: 1,
+              }}>
+                {value}
+              </span>
+            </div>
+          ))}
+
+          {/* Divider */}
+          <div style={{ height: 1, background: 'rgba(201,168,76,0.07)', margin: '10px 0 20px' }} />
+
+          {/* Aesthetic tags */}
+          {aestheticTags.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{
+                fontFamily: MONO, fontSize: 9, letterSpacing: 3,
+                color: 'rgba(212,212,224,0.3)', margin: '0 0 10px',
+                textTransform: 'uppercase',
+              }}>
+                AESTHETIC
+              </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {asset.mood_tags.map((tag, i) => (
-                  <span key={i} style={{ fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 2, color: '#5a5a6a', border: '1px solid rgba(255,255,255,0.05)', padding: '3px 10px', textTransform: 'uppercase' }}>
+                {aestheticTags.map(tag => (
+                  <span key={tag} style={{
+                    fontFamily: MONO, fontSize: 8, letterSpacing: 2,
+                    color: MUTED, border: '1px solid rgba(212,212,224,0.12)',
+                    padding: '3px 8px', textTransform: 'uppercase',
+                  }}>
                     {tag}
                   </span>
                 ))}
@@ -240,72 +420,63 @@ export default function AssetPage() {
             </div>
           )}
 
-          {/* SOVEREIGN NOTE */}
-          {asset.is_sovereign_marked && asset.sovereign_note && (
-            <div style={{ background: 'rgba(201,168,76,0.04)', border: '1px solid rgba(201,168,76,0.12)', padding: '16px 18px' }}>
-              <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 8, letterSpacing: 4, color: '#8a6f33', textTransform: 'uppercase', marginBottom: 8 }}>Sovereign Mark</p>
-              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontStyle: 'italic', color: 'rgba(212,212,224,0.6)', lineHeight: 1.65 }}>{asset.sovereign_note}</p>
+          {/* Mood tags */}
+          {moodTags.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <p style={{
+                fontFamily: MONO, fontSize: 9, letterSpacing: 3,
+                color: 'rgba(212,212,224,0.3)', margin: '0 0 10px',
+                textTransform: 'uppercase',
+              }}>
+                MOOD
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {moodTags.map(tag => (
+                  <span key={tag} style={{
+                    fontFamily: MONO, fontSize: 8, letterSpacing: 2,
+                    color: MUTED, border: '1px solid rgba(212,212,224,0.12)',
+                    padding: '3px 8px', textTransform: 'uppercase',
+                  }}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* DIVIDER */}
-          <div style={{ height: 1, background: 'linear-gradient(90deg,rgba(201,168,76,0.1),transparent)' }} />
+          {/* Download button */}
+          <button
+            onClick={handleDownload}
+            disabled={isGated || downloading}
+            style={{
+              padding: '14px 20px',
+              background: isGated ? 'transparent' : GOLD,
+              border: isGated ? `1px solid rgba(201,168,76,0.25)` : 'none',
+              color: isGated ? 'rgba(201,168,76,0.4)' : BG,
+              fontFamily: MONO, fontSize: 9, letterSpacing: 3,
+              textTransform: 'uppercase',
+              cursor: isGated ? 'default' : 'pointer',
+              transition: 'opacity 0.2s',
+              opacity: downloading ? 0.6 : 1,
+            }}
+          >
+            {isGated
+              ? `UNLOCK ${unlockLabel} TO DOWNLOAD`
+              : downloading
+                ? 'DOWNLOADING...'
+                : 'DOWNLOAD ASSET'}
+          </button>
 
-          {/* DOWNLOAD BUTTON */}
-          {isLocked ? (
-            <Link href="/subscribe" style={{ display: 'block', textAlign: 'center', fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 4, color: `rgb(${tierRgb})`, border: `1px solid rgba(${tierRgb},0.4)`, padding: '16px 24px', textDecoration: 'none', textTransform: 'uppercase' }}>
-              Unlock {asset.tier_required.toUpperCase()} to Download
-            </Link>
-          ) : (
-            <button
-              onClick={handleDownload}
-              disabled={downloading}
-              style={{ width: '100%', padding: '16px 24px', background: downloaded ? 'rgba(13,148,136,0.1)' : 'rgba(201,168,76,0.08)', border: `1px solid ${downloaded ? 'rgba(13,148,136,0.4)' : 'rgba(201,168,76,0.35)'}`, color: downloaded ? 'rgb(13,148,136)' : '#c9a84c', fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 4, textTransform: 'uppercase', cursor: downloading ? 'wait' : 'pointer', transition: 'all 0.3s' }}
-            >
-              {downloading ? 'Preparing...' : downloaded ? 'Downloaded' : 'Download Asset'}
-            </button>
-          )}
-
-          <p style={{ fontFamily: "'Courier Prime',monospace", fontSize: 9, color: '#3a3a4a', textAlign: 'center', letterSpacing: 2, textTransform: 'uppercase' }}>
-            {asset.license === 'cc0' ? 'CC0 — No attribution required' : `License: ${asset.license}`}
+          {/* License note */}
+          <p style={{
+            fontFamily: MONO, fontSize: 8, letterSpacing: 2,
+            color: 'rgba(212,212,224,0.2)', margin: '16px 0 0',
+            textTransform: 'uppercase', textAlign: 'center',
+          }}>
+            {asset.license ?? 'CCO'} — NO ATTRIBUTION REQUIRED
           </p>
         </div>
       </div>
-
-      {/* RELATED ASSETS */}
-      {related.length > 0 && (
-        <section style={{ padding: '60px 32px 80px', borderTop: '1px solid rgba(201,168,76,0.07)' }}>
-          <p style={{ fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 7, color: '#8a6f33', textTransform: 'uppercase', marginBottom: 32 }}>
-            From the same aesthetic family
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 3 }}>
-            {related.map(r => (
-              <Link key={r.id} href={`/asset/${r.id}`} style={{ display: 'block', textDecoration: 'none', position: 'relative', overflow: 'hidden' }}>
-                <img src={r.thumbnail_url} alt={r.title} style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block', filter: 'brightness(0.65)', transition: 'filter 0.3s' }}
-                  onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(0.85)')}
-                  onMouseLeave={e => (e.currentTarget.style.filter = 'brightness(0.65)')}
-                />
-                <div style={{ position: 'absolute', bottom: 8, left: 10 }}>
-                  <p style={{ fontFamily: "'Cinzel',serif", fontSize: 10, color: 'rgba(212,212,224,0.7)', letterSpacing: 1 }}>{r.title}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* FULLSCREEN MODAL */}
-      {fullscreen && asset && (
-        <div
-          onClick={() => setFullscreen(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(3,3,5,0.97)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}
-        >
-          <img src={asset.cloudinary_url || asset.thumbnail_url} alt={asset.title} style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain' }} />
-          <div style={{ position: 'absolute', top: 20, right: 28, fontFamily: "'Courier Prime',monospace", fontSize: 9, letterSpacing: 3, color: '#5a5a6a', textTransform: 'uppercase' }}>
-            Click anywhere to close
-          </div>
-        </div>
-      )}
     </div>
-  )
+  );
 }
