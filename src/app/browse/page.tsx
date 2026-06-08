@@ -34,9 +34,25 @@ type Profile = {
   display_name: string | null;
 };
 
-// ── Card — zero JS hover state ──────────────────────────────────────────────
+// ── Shared profile loader ──────────────────────────────────────────────────
+async function fetchProfile(uid: string): Promise<Profile | null> {
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('tier, is_sovereign, display_name')
+      .eq('id', uid)
+      .single();
+    return (data as Profile) ?? null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ── Card — zero JS hover state ─────────────────────────────────────────────
 function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
-  const tier   = (asset.tier_required ?? 'SHADOW').toUpperCase();
+  const raw  = (asset.tier_required ?? 'SHADOW').toUpperCase();
+  // Guard against any malformed values slipping through
+  const tier = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
   const gold   = '#c9a84c';
   const tColor = tier === 'SHADOW' ? '#5a5a6a' : gold;
 
@@ -56,7 +72,9 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
         backgroundImage: `url(${asset.cloudinary_url})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        filter: isGated ? 'blur(18px) brightness(0.3)' : 'brightness(0.85)',
+        filter: isGated
+          ? 'blur(18px) brightness(0.3)'
+          : 'brightness(0.85)',
         transform: isGated ? 'scale(1.08)' : 'scale(1)',
       }} />
 
@@ -142,36 +160,54 @@ export default function BrowsePage() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // ── AUTH: use onAuthStateChange — reliable session detection ──────────────
+  // ── AUTH: getUser() for initial load → no flicker ─────────────────────────
+  // Pattern: getUser() is a network call that reliably resolves the session.
+  // onAuthStateChange is ONLY for live sign-in / sign-out events afterward.
+  // This stops the INITIAL_SESSION(null) → SIGNED_IN flip-flop.
   useEffect(() => {
     if (!mounted) return;
+    let alive = true;
 
+    // 1. Reliable initial session check
+    async function initialLoad() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!alive) return;
+        if (user?.id) {
+          const p = await fetchProfile(user.id);
+          if (alive && p) setProfile(p);
+        }
+      } catch (_) {
+        // silent — network error, no session
+      } finally {
+        if (alive) setProfileReady(true);
+      }
+    }
+    initialLoad();
+
+    // 2. Live changes only — ignore INITIAL_SESSION
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const uid = session?.user?.id;
-
-        if (!uid) {
+      async (event, session) => {
+        if (!alive) return;
+        if (event === 'SIGNED_OUT') {
           setProfile(null);
-          setProfileReady(true);
           return;
         }
-
-        try {
-          const { data: p } = await supabase
-            .from('profiles')
-            .select('tier, is_sovereign, display_name')
-            .eq('id', uid)
-            .single();
-          if (p) setProfile(p as Profile);
-        } catch (_) {
-          // silent
-        } finally {
-          setProfileReady(true);
+        if (
+          (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') &&
+          session?.user?.id
+        ) {
+          const p = await fetchProfile(session.user.id);
+          if (alive && p) setProfile(p);
         }
+        // INITIAL_SESSION, USER_UPDATED, PASSWORD_RECOVERY → ignored
       }
     );
 
-    return () => { subscription.unsubscribe(); };
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
   }, [mounted]);
 
   // ── ASSETS ─────────────────────────────────────────────────────────────────
@@ -251,8 +287,6 @@ export default function BrowsePage() {
         />
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
-
-          {/* Sovereign indicator */}
           {profileReady && isSovereign && (
             <span style={{
               fontFamily: 'monospace', fontSize: 9,
@@ -261,8 +295,6 @@ export default function BrowsePage() {
               ◈ SOVEREIGN
             </span>
           )}
-
-          {/* Tier indicator when signed in but not sovereign */}
           {profileReady && profile && !isSovereign && (
             <span style={{
               fontFamily: 'monospace', fontSize: 9,
@@ -271,8 +303,7 @@ export default function BrowsePage() {
               {profile.tier} TIER
             </span>
           )}
-
-          {/* Sign in — only show when confirmed NOT signed in */}
+          {/* Only shows after we KNOW the user is logged out */}
           {profileReady && !profile && (
             <Link href="/auth/login" style={{
               fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
@@ -283,7 +314,6 @@ export default function BrowsePage() {
               SIGN IN
             </Link>
           )}
-
           <Link href="/access" style={{
             fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
             color: '#050507', background: '#c9a84c',
@@ -353,7 +383,9 @@ export default function BrowsePage() {
             gap: 2,
           }}>
             {filtered.map(asset => {
-              const lvl     = TIER_ORDER[(asset.tier_required ?? 'SHADOW').toUpperCase()] ?? 0;
+              const raw     = (asset.tier_required ?? 'SHADOW').toUpperCase();
+              const safeTier = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
+              const lvl     = TIER_ORDER[safeTier];
               const isGated = !isSovereign && lvl > userTierLevel;
               return <AssetCard key={asset.id} asset={asset} isGated={isGated} />;
             })}
