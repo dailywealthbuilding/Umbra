@@ -34,7 +34,7 @@ type Profile = {
   display_name: string | null;
 };
 
-// ── No JS hover state — removes crash trigger ─────────────────────────────
+// ── Card — zero JS hover state ──────────────────────────────────────────────
 function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
   const tier   = (asset.tier_required ?? 'SHADOW').toUpperCase();
   const gold   = '#c9a84c';
@@ -49,7 +49,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
       paddingBottom: '133%',
       display: 'block',
     }}>
-      {/* Background image */}
+      {/* Image */}
       <div style={{
         position: 'absolute',
         top: 0, right: 0, bottom: 0, left: 0,
@@ -69,8 +69,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
           padding: '28px 12px 10px',
         }}>
           <p style={{
-            margin: 0,
-            fontSize: 11,
+            margin: 0, fontSize: 11,
             color: 'rgba(212,212,224,0.85)',
             fontFamily: 'Georgia, serif',
             letterSpacing: 0.3,
@@ -85,15 +84,12 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
 
       {/* Tier badge */}
       <div style={{
-        position: 'absolute',
-        top: 10, right: 10,
-        fontSize: 9, letterSpacing: 3,
-        color: tColor,
+        position: 'absolute', top: 10, right: 10,
+        fontSize: 9, letterSpacing: 3, color: tColor,
         background: 'rgba(5,5,7,0.85)',
         border: `1px solid ${tColor}`,
         padding: '2px 8px',
-        textTransform: 'uppercase',
-        fontFamily: 'monospace',
+        textTransform: 'uppercase', fontFamily: 'monospace',
       }}>
         {tier}
       </div>
@@ -101,30 +97,23 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
       {/* Gated overlay */}
       {isGated && (
         <div style={{
-          position: 'absolute',
-          top: 0, right: 0, bottom: 0, left: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 10,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 10,
         }}>
           <span style={{
-            fontSize: 9, letterSpacing: 3,
-            color: gold,
+            fontSize: 9, letterSpacing: 3, color: gold,
             background: 'rgba(5,5,7,0.75)',
             border: '1px solid rgba(201,168,76,0.4)',
             padding: '3px 10px',
-            textTransform: 'uppercase',
-            fontFamily: 'monospace',
+            textTransform: 'uppercase', fontFamily: 'monospace',
           }}>
             {tier} +
           </span>
           <span style={{
             fontSize: 9, letterSpacing: 3,
             color: 'rgba(212,212,224,0.4)',
-            textTransform: 'uppercase',
-            fontFamily: 'monospace',
+            textTransform: 'uppercase', fontFamily: 'monospace',
           }}>
             UNLOCK ACCESS
           </span>
@@ -133,23 +122,15 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
     </div>
   );
 
-  // Gated cards: not clickable
-  if (isGated) {
-    return <div style={{ cursor: 'default' }}>{inner}</div>;
-  }
-
-  // Free cards: entire card is a Link
+  if (isGated) return <div style={{ cursor: 'default' }}>{inner}</div>;
   return (
-    <Link
-      href={`/asset/${asset.id}`}
-      style={{ display: 'block', textDecoration: 'none' }}
-    >
+    <Link href={`/asset/${asset.id}`} style={{ display: 'block', textDecoration: 'none' }}>
       {inner}
     </Link>
   );
 }
 
-// ── Browse Page ───────────────────────────────────────────────────────────
+// ── Browse Page ─────────────────────────────────────────────────────────────
 export default function BrowsePage() {
   const [allAssets,    setAllAssets   ] = useState<Asset[]>([]);
   const [profile,      setProfile     ] = useState<Profile | null>(null);
@@ -161,32 +142,39 @@ export default function BrowsePage() {
 
   useEffect(() => { setMounted(true); }, []);
 
+  // ── AUTH: use onAuthStateChange — reliable session detection ──────────────
   useEffect(() => {
     if (!mounted) return;
-    let alive = true;
 
-    async function loadProfile() {
-      try {
-        const { data: s } = await supabase.auth.getSession();
-        const uid = s.session?.user?.id;
-        if (!uid) return;
-        const { data: p } = await supabase
-          .from('profiles')
-          .select('tier, is_sovereign, display_name')
-          .eq('id', uid)
-          .single();
-        if (alive && p) setProfile(p as Profile);
-      } catch (_) {
-        // silent
-      } finally {
-        if (alive) setProfileReady(true);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        const uid = session?.user?.id;
+
+        if (!uid) {
+          setProfile(null);
+          setProfileReady(true);
+          return;
+        }
+
+        try {
+          const { data: p } = await supabase
+            .from('profiles')
+            .select('tier, is_sovereign, display_name')
+            .eq('id', uid)
+            .single();
+          if (p) setProfile(p as Profile);
+        } catch (_) {
+          // silent
+        } finally {
+          setProfileReady(true);
+        }
       }
-    }
+    );
 
-    loadProfile();
-    return () => { alive = false; };
+    return () => { subscription.unsubscribe(); };
   }, [mounted]);
 
+  // ── ASSETS ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mounted) return;
 
@@ -233,14 +221,13 @@ export default function BrowsePage() {
   return (
     <div style={{ minHeight: '100vh', background: '#050507', color: '#d4d4e0' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
         background: 'rgba(5,5,7,0.97)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
         padding: '0 32px',
-        display: 'flex', alignItems: 'center', gap: 24,
-        height: 60,
+        display: 'flex', alignItems: 'center', gap: 24, height: 60,
       }}>
         <Link href="/" style={{
           fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700,
@@ -258,13 +245,14 @@ export default function BrowsePage() {
             flex: 1, maxWidth: 480,
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(201,168,76,0.12)',
-            padding: '8px 14px',
-            color: '#d4d4e0', fontSize: 13,
-            outline: 'none', fontFamily: 'inherit',
+            padding: '8px 14px', color: '#d4d4e0',
+            fontSize: 13, outline: 'none', fontFamily: 'inherit',
           }}
         />
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
+
+          {/* Sovereign indicator */}
           {profileReady && isSovereign && (
             <span style={{
               fontFamily: 'monospace', fontSize: 9,
@@ -273,6 +261,18 @@ export default function BrowsePage() {
               ◈ SOVEREIGN
             </span>
           )}
+
+          {/* Tier indicator when signed in but not sovereign */}
+          {profileReady && profile && !isSovereign && (
+            <span style={{
+              fontFamily: 'monospace', fontSize: 9,
+              letterSpacing: 3, color: 'rgba(201,168,76,0.6)',
+            }}>
+              {profile.tier} TIER
+            </span>
+          )}
+
+          {/* Sign in — only show when confirmed NOT signed in */}
           {profileReady && !profile && (
             <Link href="/auth/login" style={{
               fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
@@ -283,6 +283,7 @@ export default function BrowsePage() {
               SIGN IN
             </Link>
           )}
+
           <Link href="/access" style={{
             fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
             color: '#050507', background: '#c9a84c',
@@ -293,7 +294,7 @@ export default function BrowsePage() {
         </div>
       </header>
 
-      {/* Filter tabs */}
+      {/* ── Filter tabs ── */}
       <div style={{
         borderBottom: '1px solid rgba(201,168,76,0.07)',
         padding: '0 32px', display: 'flex', overflowX: 'auto',
@@ -315,7 +316,7 @@ export default function BrowsePage() {
         ))}
       </div>
 
-      {/* Main */}
+      {/* ── Main ── */}
       <main style={{ padding: '40px 32px 80px', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{
           display: 'flex', alignItems: 'baseline',
