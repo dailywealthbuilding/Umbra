@@ -4,24 +4,21 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 
-// ─── Supabase (lazy-safe for SSR) ───────────────────────────────────────────
-const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-const supabase = createClient(SUPA_URL, SUPA_KEY);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL  ?? '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+);
 
-// ─── Tier ordering ───────────────────────────────────────────────────────────
 const TIER_ORDER: Record<string, number> = {
   SHADOW: 0, NOIR: 1, PRESTIGE: 2, OBSIDIAN: 3,
 };
 
-// ─── Filter options ──────────────────────────────────────────────────────────
 const FILTERS = [
-  'ALL', 'DARK LUXURY', 'QUIET ARCHITECTURE', 'RAW DOCUMENTARY',
-  'INDUSTRIAL PASTORAL', 'SACRED GEOMETRY', 'NEON NOIR', 'CINEMATIC DECAY',
+  'ALL','DARK LUXURY','QUIET ARCHITECTURE','RAW DOCUMENTARY',
+  'INDUSTRIAL PASTORAL','SACRED GEOMETRY','NEON NOIR','CINEMATIC DECAY',
 ];
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-interface Asset {
+type Asset = {
   id: string;
   title: string | null;
   cloudinary_url: string;
@@ -29,62 +26,52 @@ interface Asset {
   mood_tags: string | null;
   tier_required: string;
   origin_region: string | null;
-}
+};
 
-interface Profile {
+type Profile = {
   tier: string;
   is_sovereign: boolean;
   display_name: string | null;
-}
+};
 
-// ─── Asset Card ──────────────────────────────────────────────────────────────
 function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
   const [hovered, setHovered] = useState(false);
   const tier = (asset.tier_required ?? 'SHADOW').toUpperCase();
   const gold = '#c9a84c';
   const tierColor = tier === 'SHADOW' ? '#5a5a6a' : gold;
 
-  const imgEl = (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={asset.cloudinary_url}
-      alt={asset.title ?? 'Vault Asset'}
-      style={{
-        position: 'absolute' as const,
-        top: 0, left: 0,
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover' as const,
-        display: 'block',
-        filter: isGated
-          ? 'blur(18px) brightness(0.35)'
-          : hovered ? 'brightness(0.82)' : 'brightness(0.9)',
-        transform: isGated ? 'scale(1.08)' : hovered ? 'scale(1.03)' : 'scale(1)',
-        transition: 'filter 0.5s, transform 0.5s',
-      }}
-    />
-  );
-
-  const card = (
+  return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        position: 'relative' as const,
+        position: 'relative',
         background: '#0a0a0f',
         border: `1px solid ${hovered && !isGated ? 'rgba(201,168,76,0.18)' : 'rgba(255,255,255,0.04)'}`,
         overflow: 'hidden',
         cursor: isGated ? 'default' : 'pointer',
         transition: 'border-color 0.3s, transform 0.3s',
         transform: hovered && !isGated ? 'translateY(-2px)' : 'none',
-        paddingTop: '133.33%',
+        paddingBottom: '133%',
       }}
     >
-      {imgEl}
+      {/* Background image via div — no ESLint img warnings */}
+      <div style={{
+        position: 'absolute',
+        top: 0, right: 0, bottom: 0, left: 0,
+        backgroundImage: `url(${asset.cloudinary_url})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        filter: isGated
+          ? 'blur(18px) brightness(0.35)'
+          : hovered ? 'brightness(0.82)' : 'brightness(0.9)',
+        transform: isGated ? 'scale(1.08)' : hovered ? 'scale(1.03)' : 'scale(1)',
+        transition: 'filter 0.5s, transform 0.5s',
+      }} />
 
       {/* Tier badge */}
       <div style={{
-        position: 'absolute' as const,
+        position: 'absolute',
         top: 10,
         right: 10,
         fontSize: 9,
@@ -93,7 +80,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
         background: 'rgba(5,5,7,0.85)',
         border: `1px solid ${tierColor}`,
         padding: '2px 8px',
-        textTransform: 'uppercase' as const,
+        textTransform: 'uppercase',
         fontFamily: 'monospace',
       }}>
         {tier}
@@ -102,10 +89,10 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
       {/* Gated overlay */}
       {isGated && (
         <div style={{
-          position: 'absolute' as const,
+          position: 'absolute',
           top: 0, right: 0, bottom: 0, left: 0,
           display: 'flex',
-          flexDirection: 'column' as const,
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 10,
@@ -117,7 +104,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
             background: 'rgba(5,5,7,0.7)',
             border: '1px solid rgba(201,168,76,0.4)',
             padding: '3px 10px',
-            textTransform: 'uppercase' as const,
+            textTransform: 'uppercase',
             fontFamily: 'monospace',
           }}>
             {tier} +
@@ -127,7 +114,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
             letterSpacing: 3,
             color: 'rgba(212,212,224,0.45)',
             textDecoration: 'none',
-            textTransform: 'uppercase' as const,
+            textTransform: 'uppercase',
             fontFamily: 'monospace',
           }}>
             UNLOCK ACCESS
@@ -135,10 +122,10 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
         </div>
       )}
 
-      {/* Hover info */}
+      {/* Hover caption */}
       {!isGated && hovered && (
         <div style={{
-          position: 'absolute' as const,
+          position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
@@ -161,7 +148,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
               fontSize: 9,
               letterSpacing: 2,
               color: 'rgba(201,168,76,0.7)',
-              textTransform: 'uppercase' as const,
+              textTransform: 'uppercase',
               fontFamily: 'monospace',
             }}>
               {asset.aesthetic_tags.split(',').slice(0, 2).join('  ·  ')}
@@ -169,18 +156,23 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
           )}
         </div>
       )}
-    </div>
-  );
 
-  if (isGated) return <div>{card}</div>;
-  return (
-    <Link href={`/asset/${asset.id}`} style={{ textDecoration: 'none', display: 'block' }}>
-      {card}
-    </Link>
+      {/* Click overlay for non-gated */}
+      {!isGated && (
+        <Link
+          href={`/asset/${asset.id}`}
+          style={{
+            position: 'absolute',
+            top: 0, right: 0, bottom: 0, left: 0,
+            display: 'block',
+          }}
+          aria-label={asset.title ?? 'View asset'}
+        />
+      )}
+    </div>
   );
 }
 
-// ─── Browse Page ─────────────────────────────────────────────────────────────
 export default function BrowsePage() {
   const [allAssets,    setAllAssets   ] = useState<Asset[]>([]);
   const [profile,      setProfile     ] = useState<Profile | null>(null);
@@ -190,24 +182,18 @@ export default function BrowsePage() {
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [mounted,      setMounted     ] = useState(false);
 
-  // Prevent SSR/client mismatch
   useEffect(() => { setMounted(true); }, []);
 
-  // Load profile
   useEffect(() => {
     if (!mounted) return;
     let alive = true;
-
     supabase.auth.getSession().then(({ data }) => {
-      const userId = data.session?.user?.id;
-      if (!userId) {
-        if (alive) setProfileReady(true);
-        return;
-      }
+      const uid = data.session?.user?.id;
+      if (!uid) { if (alive) setProfileReady(true); return; }
       supabase
         .from('profiles')
         .select('tier, is_sovereign, display_name')
-        .eq('id', userId)
+        .eq('id', uid)
         .single()
         .then(({ data: p }) => {
           if (!alive) return;
@@ -216,18 +202,15 @@ export default function BrowsePage() {
         })
         .catch(() => { if (alive) setProfileReady(true); });
     }).catch(() => { if (alive) setProfileReady(true); });
-
     return () => { alive = false; };
   }, [mounted]);
 
-  // Load assets
   useEffect(() => {
     if (!mounted) return;
     setLoading(true);
-
     supabase
       .from('assets')
-      .select('id, title, cloudinary_url, aesthetic_tags, mood_tags, tier_required, origin_region')
+      .select('id,title,cloudinary_url,aesthetic_tags,mood_tags,tier_required,origin_region')
       .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(300)
@@ -238,20 +221,18 @@ export default function BrowsePage() {
       .catch(() => setLoading(false));
   }, [mounted]);
 
-  // Client-side filter — no query chaining, no TS issues
-  const filtered = allAssets.filter(asset => {
+  const filtered = allAssets.filter(a => {
     if (search.trim()) {
       const q = search.toLowerCase();
-      const hits =
-        asset.title?.toLowerCase().includes(q) ||
-        asset.aesthetic_tags?.toLowerCase().includes(q) ||
-        asset.mood_tags?.toLowerCase().includes(q) ||
-        asset.origin_region?.toLowerCase().includes(q);
-      if (!hits) return false;
+      if (
+        !a.title?.toLowerCase().includes(q) &&
+        !a.aesthetic_tags?.toLowerCase().includes(q) &&
+        !a.mood_tags?.toLowerCase().includes(q) &&
+        !a.origin_region?.toLowerCase().includes(q)
+      ) return false;
     }
     if (activeFilter !== 'ALL') {
-      const f = activeFilter.toLowerCase();
-      if (!asset.aesthetic_tags?.toLowerCase().includes(f)) return false;
+      if (!a.aesthetic_tags?.toLowerCase().includes(activeFilter.toLowerCase())) return false;
     }
     return true;
   });
@@ -259,19 +240,16 @@ export default function BrowsePage() {
   const isSovereign   = profile?.is_sovereign === true;
   const userTierLevel = TIER_ORDER[(profile?.tier ?? 'SHADOW').toUpperCase()] ?? 0;
 
-  // Before mount — render nothing (prevents hydration mismatch)
   if (!mounted) return null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#050507', color: '#d4d4e0' }}>
 
-      {/* ── Header ─────────────────────────────────────────────────────── */}
       <header style={{
-        position: 'sticky' as const,
+        position: 'sticky',
         top: 0,
         zIndex: 100,
         background: 'rgba(5,5,7,0.97)',
-        WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
         padding: '0 32px',
         display: 'flex',
@@ -290,39 +268,23 @@ export default function BrowsePage() {
           UMBRA
         </Link>
 
-        <div style={{ flex: 1, maxWidth: 480, position: 'relative' as const }}>
-          <span style={{
-            position: 'absolute' as const,
-            left: 14,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'rgba(201,168,76,0.4)',
-            fontSize: 12,
-            pointerEvents: 'none' as const,
-          }}>
-            ◈
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search the vault..."
-            style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(201,168,76,0.12)',
-              padding: '8px 14px 8px 34px',
-              color: '#d4d4e0',
-              fontSize: 13,
-              fontWeight: 300,
-              outline: 'none',
-              letterSpacing: 0.3,
-              borderRadius: 0,
-              fontFamily: 'inherit',
-              boxSizing: 'border-box' as const,
-            }}
-          />
-        </div>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search the vault..."
+          style={{
+            flex: 1,
+            maxWidth: 480,
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(201,168,76,0.12)',
+            padding: '8px 14px',
+            color: '#d4d4e0',
+            fontSize: 13,
+            outline: 'none',
+            fontFamily: 'inherit',
+          }}
+        />
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
           {profileReady && isSovereign && (
@@ -331,19 +293,8 @@ export default function BrowsePage() {
               fontSize: 9,
               letterSpacing: 3,
               color: '#c9a84c',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
             }}>
-              <span style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: '#c9a84c',
-                boxShadow: '0 0 8px rgba(201,168,76,0.8)',
-                display: 'inline-block',
-              }} />
-              SOVEREIGN
+              ◈ SOVEREIGN
             </span>
           )}
           {profileReady && !profile && (
@@ -373,12 +324,12 @@ export default function BrowsePage() {
         </div>
       </header>
 
-      {/* ── Filter tabs ────────────────────────────────────────────────── */}
+      {/* Filter tabs */}
       <div style={{
         borderBottom: '1px solid rgba(201,168,76,0.07)',
         padding: '0 32px',
         display: 'flex',
-        overflowX: 'auto' as const,
+        overflowX: 'auto',
       }}>
         {FILTERS.map(f => (
           <button
@@ -390,16 +341,12 @@ export default function BrowsePage() {
               color: activeFilter === f ? '#c9a84c' : 'rgba(212,212,224,0.4)',
               background: 'none',
               border: 'none',
-              borderBottom: activeFilter === f
-                ? '1px solid #c9a84c'
-                : '1px solid transparent',
+              borderBottom: activeFilter === f ? '1px solid #c9a84c' : '1px solid transparent',
               padding: '14px 16px',
               cursor: 'pointer',
-              whiteSpace: 'nowrap' as const,
-              transition: 'color 0.2s',
-              fontWeight: 300,
-              textTransform: 'uppercase' as const,
+              whiteSpace: 'nowrap',
               fontFamily: 'monospace',
+              textTransform: 'uppercase',
             }}
           >
             {f}
@@ -407,7 +354,6 @@ export default function BrowsePage() {
         ))}
       </div>
 
-      {/* ── Main grid ──────────────────────────────────────────────────── */}
       <main style={{ padding: '40px 32px 80px', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{
           display: 'flex',
@@ -415,27 +361,16 @@ export default function BrowsePage() {
           justifyContent: 'space-between',
           marginBottom: 28,
         }}>
-          <div>
-            <p style={{
-              fontFamily: 'monospace',
-              fontSize: 11,
-              letterSpacing: 6,
-              color: 'rgba(201,168,76,0.5)',
-              margin: '0 0 4px',
-              textTransform: 'uppercase' as const,
-            }}>
-              THE VAULT
-            </p>
-            <p style={{
-              fontFamily: 'monospace',
-              fontSize: 11,
-              letterSpacing: 2,
-              color: 'rgba(212,212,224,0.3)',
-              margin: 0,
-            }}>
-              {loading ? 'loading...' : `${filtered.length} pieces`}
-            </p>
-          </div>
+          <p style={{
+            fontFamily: 'monospace',
+            fontSize: 11,
+            letterSpacing: 4,
+            color: 'rgba(201,168,76,0.5)',
+            margin: 0,
+            textTransform: 'uppercase',
+          }}>
+            {loading ? 'loading...' : `${filtered.length} pieces in the vault`}
+          </p>
           {!isSovereign && (
             <Link href="/access" style={{
               fontFamily: 'monospace',
@@ -444,7 +379,7 @@ export default function BrowsePage() {
               color: 'rgba(201,168,76,0.6)',
               textDecoration: 'none',
             }}>
-              UNLOCK MORE
+              UNLOCK MORE →
             </Link>
           )}
         </div>
@@ -459,23 +394,8 @@ export default function BrowsePage() {
             fontSize: 11,
             letterSpacing: 4,
             color: 'rgba(201,168,76,0.3)',
-            textTransform: 'uppercase' as const,
           }}>
-            entering the shadow...
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 300,
-            fontFamily: 'monospace',
-            fontSize: 11,
-            letterSpacing: 4,
-            color: 'rgba(212,212,224,0.2)',
-            textTransform: 'uppercase' as const,
-          }}>
-            the vault is silent
+            ENTERING THE SHADOW...
           </div>
         ) : (
           <div style={{
@@ -484,12 +404,9 @@ export default function BrowsePage() {
             gap: 2,
           }}>
             {filtered.map(asset => {
-              const assetTier  = (asset.tier_required ?? 'SHADOW').toUpperCase();
-              const assetLevel = TIER_ORDER[assetTier] ?? 0;
+              const assetLevel = TIER_ORDER[(asset.tier_required ?? 'SHADOW').toUpperCase()] ?? 0;
               const isGated    = !isSovereign && assetLevel > userTierLevel;
-              return (
-                <AssetCard key={asset.id} asset={asset} isGated={isGated} />
-              );
+              return <AssetCard key={asset.id} asset={asset} isGated={isGated} />;
             })}
           </div>
         )}
