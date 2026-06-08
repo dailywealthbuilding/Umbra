@@ -34,38 +34,54 @@ type Profile = {
   display_name: string | null;
 };
 
+// ── No JS hover state — removes crash trigger ─────────────────────────────
 function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
-  const [hovered, setHovered] = useState(false);
-  const tier  = (asset.tier_required ?? 'SHADOW').toUpperCase();
-  const gold  = '#c9a84c';
+  const tier   = (asset.tier_required ?? 'SHADOW').toUpperCase();
+  const gold   = '#c9a84c';
   const tColor = tier === 'SHADOW' ? '#5a5a6a' : gold;
 
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        position: 'relative',
-        background: '#0a0a0f',
-        border: `1px solid ${hovered && !isGated ? 'rgba(201,168,76,0.18)' : 'rgba(255,255,255,0.04)'}`,
-        overflow: 'hidden',
-        cursor: isGated ? 'default' : 'pointer',
-        paddingBottom: '133%',
-        transition: 'border-color 0.3s, transform 0.3s',
-        transform: hovered && !isGated ? 'translateY(-2px)' : 'none',
-      }}
-    >
-      {/* Image via background — avoids ESLint img rule */}
+  const inner = (
+    <div style={{
+      position: 'relative',
+      background: '#0a0a0f',
+      border: '1px solid rgba(255,255,255,0.04)',
+      overflow: 'hidden',
+      paddingBottom: '133%',
+      display: 'block',
+    }}>
+      {/* Background image */}
       <div style={{
         position: 'absolute',
         top: 0, right: 0, bottom: 0, left: 0,
         backgroundImage: `url(${asset.cloudinary_url})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        filter: isGated ? 'blur(18px) brightness(0.35)' : hovered ? 'brightness(0.82)' : 'brightness(0.9)',
-        transform: isGated ? 'scale(1.08)' : hovered ? 'scale(1.03)' : 'scale(1)',
-        transition: 'filter 0.5s, transform 0.5s',
+        filter: isGated ? 'blur(18px) brightness(0.3)' : 'brightness(0.85)',
+        transform: isGated ? 'scale(1.08)' : 'scale(1)',
       }} />
+
+      {/* Always-visible title strip */}
+      {!isGated && (
+        <div style={{
+          position: 'absolute',
+          bottom: 0, left: 0, right: 0,
+          background: 'linear-gradient(transparent, rgba(5,5,7,0.92))',
+          padding: '28px 12px 10px',
+        }}>
+          <p style={{
+            margin: 0,
+            fontSize: 11,
+            color: 'rgba(212,212,224,0.85)',
+            fontFamily: 'Georgia, serif',
+            letterSpacing: 0.3,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {asset.title ?? 'Vault Asset'}
+          </p>
+        </div>
+      )}
 
       {/* Tier badge */}
       <div style={{
@@ -96,7 +112,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
           <span style={{
             fontSize: 9, letterSpacing: 3,
             color: gold,
-            background: 'rgba(5,5,7,0.7)',
+            background: 'rgba(5,5,7,0.75)',
             border: '1px solid rgba(201,168,76,0.4)',
             padding: '3px 10px',
             textTransform: 'uppercase',
@@ -104,61 +120,36 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
           }}>
             {tier} +
           </span>
-          <Link href="/access" style={{
+          <span style={{
             fontSize: 9, letterSpacing: 3,
-            color: 'rgba(212,212,224,0.45)',
-            textDecoration: 'none',
+            color: 'rgba(212,212,224,0.4)',
             textTransform: 'uppercase',
             fontFamily: 'monospace',
           }}>
             UNLOCK ACCESS
-          </Link>
+          </span>
         </div>
-      )}
-
-      {/* Hover caption */}
-      {!isGated && hovered && (
-        <div style={{
-          position: 'absolute',
-          bottom: 0, left: 0, right: 0,
-          background: 'linear-gradient(transparent, rgba(5,5,7,0.95))',
-          padding: '32px 14px 14px',
-        }}>
-          <p style={{
-            margin: '0 0 4px', fontSize: 12, fontWeight: 600,
-            color: '#d4d4e0', letterSpacing: 0.5,
-            fontFamily: 'Georgia, serif',
-          }}>
-            {asset.title ?? 'Vault Asset'}
-          </p>
-          {asset.aesthetic_tags && (
-            <p style={{
-              margin: 0, fontSize: 9, letterSpacing: 2,
-              color: 'rgba(201,168,76,0.7)',
-              textTransform: 'uppercase', fontFamily: 'monospace',
-            }}>
-              {asset.aesthetic_tags.split(',').slice(0, 2).join('  ·  ')}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Click overlay */}
-      {!isGated && (
-        <Link
-          href={`/asset/${asset.id}`}
-          style={{
-            position: 'absolute',
-            top: 0, right: 0, bottom: 0, left: 0,
-            display: 'block',
-          }}
-          aria-label={asset.title ?? 'View asset'}
-        />
       )}
     </div>
   );
+
+  // Gated cards: not clickable
+  if (isGated) {
+    return <div style={{ cursor: 'default' }}>{inner}</div>;
+  }
+
+  // Free cards: entire card is a Link
+  return (
+    <Link
+      href={`/asset/${asset.id}`}
+      style={{ display: 'block', textDecoration: 'none' }}
+    >
+      {inner}
+    </Link>
+  );
 }
 
+// ── Browse Page ───────────────────────────────────────────────────────────
 export default function BrowsePage() {
   const [allAssets,    setAllAssets   ] = useState<Asset[]>([]);
   const [profile,      setProfile     ] = useState<Profile | null>(null);
@@ -170,26 +161,23 @@ export default function BrowsePage() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // ── Load profile — async/await avoids PromiseLike .catch() TS error ──────
   useEffect(() => {
     if (!mounted) return;
     let alive = true;
 
     async function loadProfile() {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const uid = sessionData.session?.user?.id;
+        const { data: s } = await supabase.auth.getSession();
+        const uid = s.session?.user?.id;
         if (!uid) return;
-
         const { data: p } = await supabase
           .from('profiles')
           .select('tier, is_sovereign, display_name')
           .eq('id', uid)
           .single();
-
         if (alive && p) setProfile(p as Profile);
       } catch (_) {
-        // silent — no profile means SHADOW tier
+        // silent
       } finally {
         if (alive) setProfileReady(true);
       }
@@ -199,7 +187,6 @@ export default function BrowsePage() {
     return () => { alive = false; };
   }, [mounted]);
 
-  // ── Load assets — async/await ─────────────────────────────────────────────
   useEffect(() => {
     if (!mounted) return;
 
@@ -211,7 +198,6 @@ export default function BrowsePage() {
           .eq('is_active', true)
           .order('created_at', { ascending: false })
           .limit(300);
-
         if (!error && data) setAllAssets(data as Asset[]);
       } catch (_) {
         // silent
@@ -223,7 +209,6 @@ export default function BrowsePage() {
     loadAssets();
   }, [mounted]);
 
-  // ── Client-side filter ────────────────────────────────────────────────────
   const filtered = allAssets.filter(a => {
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -250,8 +235,7 @@ export default function BrowsePage() {
 
       {/* Header */}
       <header style={{
-        position: 'sticky',
-        top: 0, zIndex: 100,
+        position: 'sticky', top: 0, zIndex: 100,
         background: 'rgba(5,5,7,0.97)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
         padding: '0 32px',
@@ -274,8 +258,9 @@ export default function BrowsePage() {
             flex: 1, maxWidth: 480,
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(201,168,76,0.12)',
-            padding: '8px 14px', color: '#d4d4e0',
-            fontSize: 13, outline: 'none', fontFamily: 'inherit',
+            padding: '8px 14px',
+            color: '#d4d4e0', fontSize: 13,
+            outline: 'none', fontFamily: 'inherit',
           }}
         />
 
@@ -292,7 +277,8 @@ export default function BrowsePage() {
             <Link href="/auth/login" style={{
               fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
               color: 'rgba(212,212,224,0.5)', textDecoration: 'none',
-              padding: '6px 14px', border: '1px solid rgba(255,255,255,0.08)',
+              padding: '6px 14px',
+              border: '1px solid rgba(255,255,255,0.08)',
             }}>
               SIGN IN
             </Link>
@@ -317,7 +303,9 @@ export default function BrowsePage() {
             fontSize: 10, letterSpacing: 2,
             color: activeFilter === f ? '#c9a84c' : 'rgba(212,212,224,0.4)',
             background: 'none', border: 'none',
-            borderBottom: activeFilter === f ? '1px solid #c9a84c' : '1px solid transparent',
+            borderBottom: activeFilter === f
+              ? '1px solid #c9a84c'
+              : '1px solid transparent',
             padding: '14px 16px', cursor: 'pointer',
             whiteSpace: 'nowrap', fontFamily: 'monospace',
             textTransform: 'uppercase',
@@ -327,24 +315,22 @@ export default function BrowsePage() {
         ))}
       </div>
 
-      {/* Grid */}
+      {/* Main */}
       <main style={{ padding: '40px 32px 80px', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{
           display: 'flex', alignItems: 'baseline',
           justifyContent: 'space-between', marginBottom: 28,
         }}>
           <p style={{
-            fontFamily: 'monospace', fontSize: 11,
-            letterSpacing: 4, color: 'rgba(201,168,76,0.5)',
-            margin: 0, textTransform: 'uppercase',
+            fontFamily: 'monospace', fontSize: 11, letterSpacing: 4,
+            color: 'rgba(201,168,76,0.5)', margin: 0, textTransform: 'uppercase',
           }}>
             {loading ? 'loading...' : `${filtered.length} pieces in the vault`}
           </p>
           {!isSovereign && (
             <Link href="/access" style={{
-              fontFamily: 'monospace', fontSize: 10,
-              letterSpacing: 3, color: 'rgba(201,168,76,0.6)',
-              textDecoration: 'none',
+              fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
+              color: 'rgba(201,168,76,0.6)', textDecoration: 'none',
             }}>
               UNLOCK MORE →
             </Link>
