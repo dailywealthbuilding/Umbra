@@ -81,9 +81,23 @@ export default function AssetPage() {
 
     async function initialLoad() {
       try {
+        // Step 1: getSession() — reads cookies instantly, no network call.
+        // Shows logged-in UI immediately on slow connections (Kenya → EU).
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!alive) return;
+        if (session?.user?.id) {
+          const p = await fetchProfile(session.user.id);
+          if (alive && p) setProfile(p);
+          if (alive) setProfileReady(true); // unblock UI now
+        }
+        // Step 2: getUser() — verifies JWT with server in background.
+        // Only updates state if user ID changed (e.g. session was stale).
         const { data: { user } } = await supabase.auth.getUser();
         if (!alive) return;
-        if (user?.id) {
+        if (!session?.user?.id) {
+          // No session found at all — mark ready and move on
+          if (alive) setProfileReady(true);
+        } else if (user?.id && user.id !== session.user.id) {
           const p = await fetchProfile(user.id);
           if (alive && p) setProfile(p);
         }
@@ -132,18 +146,16 @@ export default function AssetPage() {
     if (!asset || isGated || downloading) return;
     setDownloading(true);
     try {
-      // Increment download count
-      await supabase
-        .from('assets')
-        .update({ download_count: (asset.download_count ?? 0) + 1 })
-        .eq('id', asset.id);
-
-      // Trigger browser download
-      const link  = document.createElement('a');
-      link.href   = asset.cloudinary_url;
-      link.target = '_blank';
-      link.rel    = 'noopener noreferrer';
+      // Use the server-side download route — forces a real file download,
+      // not a browser tab open. The route verifies tier + increments count.
+      const link      = document.createElement('a');
+      link.href       = `/api/download?id=${asset.id}`;
+      link.download   = asset.title
+        ? asset.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60)
+        : 'umbra-asset';
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     } catch (_) {}
     finally { setDownloading(false); }
   }
@@ -301,7 +313,7 @@ export default function AssetPage() {
                 This piece lives in a deeper chamber of the vault.
               </p>
               <Link
-                href={profile ? '/access' : '/auth/login'}
+                href={profile ? '/subscribe' : '/auth/login'}
                 style={{
                   marginTop: 8,
                   fontFamily: MONO, fontSize: 9, letterSpacing: 4,
