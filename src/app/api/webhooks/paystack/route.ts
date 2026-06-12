@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
       const { data: { users } } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
       const found = users.find((u: { email?: string }) => u.email === email)
       if (found?.id) {
-        await supabase.from('profiles').update({ tier: 'access' }).eq('id', found.id)
-        await supabase.from('subscriptions').update({ tier: 'access', status: 'cancelled' }).eq('user_id', found.id)
+        await supabase.from('profiles').update({ tier: 'SHADOW' }).eq('id', found.id)
+        await supabase.from('subscriptions').update({ tier: 'SHADOW', status: 'cancelled' }).eq('user_id', found.id)
       }
     }
   }
