@@ -645,6 +645,8 @@ export default function Page(){
           <a href="#engine">Sensory Engine</a>
           <a href="#gallery">Gallery</a>
           <a href="#tiers">Access</a>
+          <a href="/browse">Browse</a>
+          <a href="/auth/login" style={{ color: 'rgba(201,168,76,0.85)', borderBottom: '1px solid rgba(201,168,76,0.35)', paddingBottom: 2 }}>Sign In</a>
           <a href="#waitlist">Enter</a>
         </div>
         <div className="n-status"><div className="n-dot"/><span>SOVEREIGN ONLINE</span></div>
