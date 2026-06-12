@@ -171,9 +171,21 @@ export default function BrowsePage() {
     // 1. Reliable initial session check
     async function initialLoad() {
       try {
+        // Step 1: getSession() — instant cookie read, no network round-trip.
+        // On a Kenyan mobile connection to EU-WEST-2, this saves 1–3 seconds.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!alive) return;
+        if (session?.user?.id) {
+          const p = await fetchProfile(session.user.id);
+          if (alive && p) setProfile(p);
+          if (alive) setProfileReady(true); // unlock UI immediately
+        }
+        // Step 2: getUser() — background JWT verification with Supabase server.
         const { data: { user } } = await supabase.auth.getUser();
         if (!alive) return;
-        if (user?.id) {
+        if (!session?.user?.id) {
+          if (alive) setProfileReady(true);
+        } else if (user?.id && user.id !== session.user.id) {
           const p = await fetchProfile(user.id);
           if (alive && p) setProfile(p);
         }
