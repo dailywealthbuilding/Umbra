@@ -117,7 +117,7 @@ export default function SubscribePage() {
       <div style={{ background: '#050507', minHeight: '100vh', color: '#d4d4e0', fontFamily: "'DM Sans',sans-serif", fontWeight: 300 }}>
 
         {/* NAV */}
-        <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(5,5,7,0.97)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(201,168,76,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px', height: 60 }}>
+        <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(5,5,7,0.97)', WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(201,168,76,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px', height: 60 }}>
           <Link href="/" style={{ fontFamily: "'Cinzel',serif", fontSize: 18, fontWeight: 700, color: '#c9a84c', letterSpacing: 4, textDecoration: 'none' }}>
             UMBRA
           </Link>
@@ -171,7 +171,7 @@ export default function SubscribePage() {
                 onMouseEnter={() => setHoveredTile(i)}
                 onMouseLeave={() => setHoveredTile(null)}
               >
-                <div style={{ position: 'absolute', inset: 0, backdropFilter: hoveredTile === i ? 'blur(6px)' : 'blur(18px)', background: hoveredTile === i ? 'rgba(5,5,7,0.25)' : 'rgba(5,5,7,0.55)', transition: 'all 0.4s' }} />
+                <div style={{ position: 'absolute', inset: 0, WebkitBackdropFilter: 'blur(14px)', backdropFilter: 'blur(14px)', background: 'rgba(5,5,7,0.45)', transition: 'all 0.4s' }} />
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 }}>
                   <span style={{ fontFamily: "'Cinzel',serif", fontSize: hoveredTile === i ? 13 : 11, color: hoveredTile === i ? 'rgba(212,212,224,0.9)' : 'rgba(212,212,224,0.35)', letterSpacing: 2, textAlign: 'center', lineHeight: 1.4, transition: 'all 0.3s' }}>
                     {tile.loc}
