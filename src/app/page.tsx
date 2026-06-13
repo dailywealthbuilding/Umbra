@@ -70,7 +70,7 @@ body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:
 /* ── NAV ── */
 nav { position:fixed; top:0; left:0; right:0; z-index:100; padding:26px 56px; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(to bottom,rgba(3,3,5,.92),transparent) }
 .n-mark { font-family:var(--font-cinzel),serif; font-size:11px; font-weight:700; letter-spacing:8px; color:var(--g); text-decoration:none; opacity:0; animation:fadeup .8s ease forwards 4.2s }
-.n-links { display:flex; gap:36px; opacity:0; animation:fadeup .8s ease forwards 4.4s }
+.n-links { display:flex; gap:24px; flex-wrap:wrap; opacity:0; animation:fadeup .8s ease forwards 4.4s }
 .n-links a { font-family:var(--font-mono),monospace; font-size:8.5px; letter-spacing:3px; text-transform:uppercase; color:var(--tg); text-decoration:none; transition:color .3s }
 .n-links a:hover { color:var(--g) }
 .n-status { display:flex; align-items:center; gap:8px; font-family:var(--font-mono),monospace; font-size:8px; letter-spacing:.25em; color:rgba(201,168,76,.38); opacity:0; animation:fadeup .8s ease forwards 4.6s }
