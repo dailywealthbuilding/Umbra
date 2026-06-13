@@ -270,24 +270,30 @@ export default function BrowsePage() {
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
         background: 'rgba(5,5,7,0.97)',
+        WebkitBackdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
-        padding: '0 32px',
-        display: 'flex', alignItems: 'center', gap: 24, height: 60,
+        padding: '0 20px',
+        display: 'flex', alignItems: 'center', gap: 16, height: 60,
+        flexWrap: 'nowrap',
       }}>
+        {/* UMBRA mark */}
         <Link href="/" style={{
           fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700,
           color: '#c9a84c', letterSpacing: 6, textDecoration: 'none',
+          flexShrink: 0,
         }}>
           UMBRA
         </Link>
 
+        {/* Search — full width on mobile, capped on desktop */}
         <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search the vault — mood, aesthetic, region..."
           style={{
-            flex: 1, maxWidth: 480,
+            flex: 1, minWidth: 0, maxWidth: 480,
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(201,168,76,0.12)',
             padding: '8px 14px', color: '#d4d4e0',
@@ -295,41 +301,68 @@ export default function BrowsePage() {
           }}
         />
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
-          {profileReady && isSovereign && (
-            <span style={{
-              fontFamily: 'monospace', fontSize: 9,
-              letterSpacing: 3, color: '#c9a84c',
+        {/* Nav links — hidden on small screens via minWidth guard */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginLeft: 'auto', flexShrink: 0 }}>
+          {/* Desktop-only nav links */}
+          <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginRight: 20 }}>
+            <Link href="/drift" style={{
+              fontFamily: 'monospace', fontSize: 8, letterSpacing: '0.3em',
+              color: 'rgba(152,152,180,0.5)', textDecoration: 'none',
+              textTransform: 'uppercase', whiteSpace: 'nowrap',
             }}>
+              Drift
+            </Link>
+            <Link href="/collections" style={{
+              fontFamily: 'monospace', fontSize: 8, letterSpacing: '0.3em',
+              color: 'rgba(152,152,180,0.5)', textDecoration: 'none',
+              textTransform: 'uppercase', whiteSpace: 'nowrap',
+            }}>
+              Collections
+            </Link>
+            <Link href="/signal" style={{
+              fontFamily: 'monospace', fontSize: 8, letterSpacing: '0.3em',
+              color: 'rgba(152,152,180,0.5)', textDecoration: 'none',
+              textTransform: 'uppercase', whiteSpace: 'nowrap',
+            }}>
+              Signal
+            </Link>
+          </div>
+
+          {/* Tier badge */}
+          {profileReady && isSovereign && (
+            <span style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#c9a84c', marginRight: 14, whiteSpace: 'nowrap' }}>
               ◈ SOVEREIGN
             </span>
           )}
           {profileReady && profile && !isSovereign && (
-            <span style={{
-              fontFamily: 'monospace', fontSize: 9,
-              letterSpacing: 3, color: 'rgba(201,168,76,0.6)',
-            }}>
-              {profile.tier} TIER
+            <span style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: 'rgba(201,168,76,0.6)', marginRight: 14, whiteSpace: 'nowrap' }}>
+              {profile.tier}
             </span>
           )}
-          {/* Only shows after we KNOW the user is logged out */}
+
+          {/* Sign in — logged out only */}
           {profileReady && !profile && (
             <Link href="/auth/login" style={{
-              fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
+              fontFamily: 'monospace', fontSize: 9, letterSpacing: 3,
               color: 'rgba(212,212,224,0.5)', textDecoration: 'none',
-              padding: '6px 14px',
-              border: '1px solid rgba(255,255,255,0.08)',
+              padding: '6px 12px', border: '1px solid rgba(255,255,255,0.08)',
+              marginRight: 10, whiteSpace: 'nowrap',
             }}>
               SIGN IN
             </Link>
           )}
-          <Link href="/access" style={{
-            fontFamily: 'monospace', fontSize: 10, letterSpacing: 3,
-            color: '#050507', background: '#c9a84c',
-            textDecoration: 'none', padding: '6px 14px',
-          }}>
-            UNLOCK ACCESS
-          </Link>
+
+          {/* Unlock access — only when not subscribed */}
+          {profileReady && (!profile || profile.tier === 'SHADOW') && (
+            <Link href="/subscribe" style={{
+              fontFamily: 'monospace', fontSize: 9, letterSpacing: 3,
+              color: '#050507', background: '#c9a84c',
+              textDecoration: 'none', padding: '6px 14px',
+              whiteSpace: 'nowrap',
+            }}>
+              UNLOCK
+            </Link>
+          )}
         </div>
       </header>
 
