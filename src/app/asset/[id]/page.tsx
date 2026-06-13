@@ -2,13 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL  ?? '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-);
+const supabase = createClient();
 
 const TIER_ORDER: Record<string, number> = {
   SHADOW: 0, NOIR: 1, PRESTIGE: 2, OBSIDIAN: 3,
