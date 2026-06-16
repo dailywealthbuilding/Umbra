@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 
-const sb     = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const sb     = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // ─── HTML EMAIL TEMPLATE ───
@@ -170,25 +170,28 @@ export async function POST(req: Request) {
     const { name, email, aesthetic_affinity } = await req.json()
     if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 })
 
-    // Check existing
+    // ── Check existing — return their ORIGINAL position, never recompute ──
     const { data: ex } = await sb.from('waitlist').select('id,position').eq('email', email).single()
     if (ex) {
-      const { count } = await sb.from('waitlist').select('*', { count: 'exact', head: true })
-      return NextResponse.json({ message: 'Already registered', position: ex.position || count || 1 }, { status: 409 })
+      return NextResponse.json({ message: 'Already registered', position: ex.position }, { status: 409 })
     }
 
-    // Insert
-    const { count: cur } = await sb.from('waitlist').select('*', { count: 'exact', head: true })
-    const position = (cur || 0) + 1
-    const { error: dbErr } = await sb.from('waitlist').insert({
-      name: name || null,
-      email,
-      aesthetic_affinity: aesthetic_affinity || null,
-      position
-    })
-    if (dbErr) throw dbErr
+    // ── Insert — position assigned atomically by DB sequence (waitlist_position_seq) ──
+    // Do NOT pass position manually — let the default nextval() assign it
+    const { data: inserted, error: dbErr } = await sb
+      .from('waitlist')
+      .insert({
+        name:               name || null,
+        email,
+        aesthetic_affinity: aesthetic_affinity || null,
+      })
+      .select('position')
+      .single()
 
-    // Send confirmation email
+    if (dbErr) throw dbErr
+    const position = inserted.position
+
+    // ── Send confirmation email ──
     const isFounding = position <= 100
     const subject    = isFounding
       ? `UMBRA — You Are Among The Founding 100 · #${String(position).padStart(3,'0')}`
@@ -201,7 +204,6 @@ export async function POST(req: Request) {
         subject,
         html:    buildEmail(name || null, position),
       }).catch(e => {
-        // Don't fail the request if email fails — log silently
         console.error('[UMBRA] Email send failed:', e)
       })
     }
