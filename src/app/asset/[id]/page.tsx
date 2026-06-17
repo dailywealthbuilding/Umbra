@@ -231,6 +231,18 @@ export default function AssetPage() {
       display: 'flex', flexDirection: 'column',
     }}>
 
+      {/* ── Responsive layout — full image, never cropped or over-zoomed ── */}
+      <style>{`
+        .umbra-asset-layout { flex: 1; display: flex; min-height: 100vh; }
+        .umbra-asset-image  { flex: 1; position: relative; overflow: hidden; min-height: 100vh; background: #000; }
+        .umbra-asset-info   { width: 300px; min-width: 280px; flex-shrink: 0; }
+        @media (max-width: 880px) {
+          .umbra-asset-layout { flex-direction: column; }
+          .umbra-asset-image  { flex: none; width: 100%; min-height: 56vh; max-height: 70vh; }
+          .umbra-asset-info   { width: 100%; min-width: 0; }
+        }
+      `}</style>
+
       {/* ── Top nav ── */}
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
@@ -255,26 +267,19 @@ export default function AssetPage() {
       </header>
 
       {/* ── Main layout ── */}
-      <div style={{
-        flex: 1, display: 'flex',
-        minHeight: '100vh',
-      }}>
+      <div className="umbra-asset-layout">
 
         {/* ── Image panel ── */}
-        <div style={{
-          flex: 1,
-          position: 'relative',
-          overflow: 'hidden',
-          minHeight: '100vh',
-        }}>
-          {/* Full image */}
+        <div className="umbra-asset-image">
+          {/* Full image — contain, never cropped or over-zoomed */}
           <div style={{
             position: 'absolute',
             top: 0, right: 0, bottom: 0, left: 0,
             backgroundImage: `url(${asset.cloudinary_url})`,
-            backgroundSize: 'cover',
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
             backgroundPosition: 'center',
-            filter: isGated ? 'blur(22px) brightness(0.28)' : 'brightness(0.9)',
+            filter: isGated ? 'blur(22px) brightness(0.28)' : 'brightness(0.95)',
             transform: isGated ? 'scale(1.1)' : 'scale(1)',
             transition: 'filter 0.6s, transform 0.6s',
           }} />
@@ -285,6 +290,7 @@ export default function AssetPage() {
               position: 'absolute',
               top: 0, right: 0, bottom: 0, left: 0,
               background: 'linear-gradient(to right, transparent 60%, rgba(5,5,7,0.6) 100%)',
+              pointerEvents: 'none',
             }} />
           )}
 
@@ -328,9 +334,7 @@ export default function AssetPage() {
         </div>
 
         {/* ── Right info panel ── */}
-        <div style={{
-          width: 300,
-          minWidth: 280,
+        <div className="umbra-asset-info" style={{
           background: 'rgba(5,5,7,0.97)',
           borderLeft: '1px solid rgba(201,168,76,0.07)',
           padding: '80px 28px 40px',
