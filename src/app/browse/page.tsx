@@ -19,8 +19,8 @@ type Asset = {
   id: string;
   title: string | null;
   cloudinary_url: string;
-  aesthetic_tags: string | null;
-  mood_tags: string | null;
+  aesthetic_tags: string[] | string | null;
+  mood_tags: string[] | string | null;
   tier_required: string;
   origin_region: string | null;
 };
@@ -30,6 +30,13 @@ type Profile = {
   is_sovereign: boolean;
   display_name: string | null;
 };
+
+// Tags arrive as arrays from the DB — never call string methods on them directly
+function parseTags(raw: string[] | string | null): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  return raw.split(',').map(t => t.trim()).filter(Boolean);
+}
 
 // ── Shared profile loader ──────────────────────────────────────────────────
 async function fetchProfile(uid: string): Promise<Profile | null> {
@@ -243,18 +250,19 @@ export default function BrowsePage() {
   }, [mounted]);
 
   const filtered = allAssets.filter(a => {
+    const tagList   = [...parseTags(a.aesthetic_tags), ...parseTags(a.mood_tags)];
+    const tagString = tagList.join(' ').toLowerCase();
+
     if (search.trim()) {
       const q = search.toLowerCase();
-      if (
-        !a.title?.toLowerCase().includes(q) &&
-        !a.aesthetic_tags?.toLowerCase().includes(q) &&
-        !a.mood_tags?.toLowerCase().includes(q) &&
-        !a.origin_region?.toLowerCase().includes(q)
-      ) return false;
+      const haystack = [a.title ?? '', tagString, a.origin_region ?? ''].join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
     }
+
     if (activeFilter !== 'ALL') {
-      if (!a.aesthetic_tags?.toLowerCase().includes(activeFilter.toLowerCase())) return false;
+      if (!tagString.includes(activeFilter.toLowerCase())) return false;
     }
+
     return true;
   });
 
