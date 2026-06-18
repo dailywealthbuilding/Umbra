@@ -211,7 +211,7 @@ h1.logo::after { content:'UMBRA'; position:absolute; inset:0; background:inherit
 .mfst-entry p strong { color:var(--t); font-weight:400 }
 .mfst-decree { font-family:var(--font-cinzel),serif; font-size:clamp(24px,4.5vw,52px); font-weight:700; line-height:1.2; color:transparent; background:linear-gradient(135deg,var(--gd),var(--g),var(--gb),var(--g)); -webkit-background-clip:text; background-clip:text }
 
-/* ── ARCH + DNA ── */
+/* ── FEATURED + DNA ── */
 .dual-section { position:relative; z-index:2; padding:80px 56px 120px; overflow:hidden }
 .dual-section::before { content:''; position:absolute; left:0; right:0; top:0; height:1px; background:linear-gradient(90deg,transparent,rgba(201,168,76,.12),transparent) }
 .dual-inner { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:80px; align-items:start }
@@ -219,6 +219,11 @@ h1.logo::after { content:'UMBRA'; position:absolute; inset:0; background:inherit
 .dna-txt p { font-size:clamp(13px,1.5vw,16px); color:var(--td); line-height:2.1; font-weight:300 }
 .dna-txt p+p { margin-top:12px }
 .dna-dims { font-family:var(--font-mono),monospace; font-size:10.5px; color:var(--tg); line-height:2; letter-spacing:.1em; margin-top:20px }
+.feat-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px }
+.feat-item { position:relative; aspect-ratio:2/3; overflow:hidden; border:1px solid rgba(201,168,76,.08) }
+.feat-item img { width:100%; height:100%; object-fit:cover; display:block; filter:saturate(1.04) brightness(.97); transition:transform .9s cubic-bezier(.16,1,.3,1), filter .5s }
+.feat-item:hover img { transform:scale(1.045); filter:saturate(1.1) brightness(1.04) }
+@media(max-width:560px){ .feat-grid{grid-template-columns:1fr 1fr; gap:4px} }
 
 /* ── PRINCIPLES ── */
 .principles { position:relative; z-index:2; padding:0 56px 140px }
@@ -310,7 +315,7 @@ footer { position:relative; z-index:2; border-top:1px solid rgba(255,255,255,.02
 const GD = (id: string) => `https://drive.google.com/uc?export=view&id=${id}`
 const GDT = (id: string, w=1280) => `https://drive.google.com/thumbnail?id=${id}&sz=w${w}`
 
-// Gallery photos (selected highest quality)
+// Gallery photos (selected highest quality) — canonical title/category reference used by MOODS + FeaturedShowcase below
 const PHOTOS = [
   { id:'1RWq2dNH6vdjF0GJ8TVMKRw5LinmnIYBY', title:'Autumn Impermanence', cat:'Fine Art · Kyoto' },
   { id:'1IY5OOrFQVg2ZeJqk7DdNSVZgT8KBpqe5', title:'Still Frame Study', cat:'Documentary' },
@@ -336,16 +341,18 @@ const VIDEOS = [
   { id:'1Fkp8kEGiFZE25IRMmWL-PQQkNaJNiC3A', label:'AESTHETIC · 006' },
 ]
 
-// Sensory moods
+// Sensory moods — rebuilt June 17 2026: every card below now points to a verified real asset
+// whose title/category actually matches what's displayed. The previous version had mismatched
+// and orphaned Drive IDs (titles that didn't match the photo shown, two fully broken links).
 const MOODS = [
   { q:'silence before storm', bg:'linear-gradient(160deg,#020210,#080820)', acc:'rgba(70,80,220,.5)', dot:'#4850dc', status:'DEEP_INDIGO',
-    cards:[{t:'The Hour Before Rain',c:'Fine Art · Tokyo',bg:'url(https://drive.google.com/thumbnail?id=10Tzxs021QjZiHl8gcpLDovoxLhf7Yqiw&sz=w400) center/cover no-repeat'},{t:'Void Architecture II',c:'Architecture · Oslo',bg:'url(https://drive.google.com/thumbnail?id=1d2V_DgvJ55E4z-GflKW1V2rIFbbTLiYm&sz=w400) center/cover no-repeat'},{t:'Static & Breath',c:'Abstract · Seoul',bg:'url(https://drive.google.com/thumbnail?id=1cZX0ONwiu-LxTANH3-5oRwspvzX3uA5T&sz=w400) center/cover no-repeat'}]},
+    cards:[{t:'Void Architecture III',c:'Architecture',bg:'url(https://drive.google.com/thumbnail?id=10Tzxs021QjZiHl8gcpLDovoxLhf7Yqiw&sz=w400) center/cover no-repeat'},{t:'Texture of Silence',c:'Macro · Oslo',bg:'url(https://drive.google.com/thumbnail?id=1pkxzvdaclf9jg8MEu7Tpmre6-p8icd9K&sz=w400) center/cover no-repeat'},{t:'Still Frame Study',c:'Documentary',bg:'url(https://drive.google.com/thumbnail?id=1IY5OOrFQVg2ZeJqk7DdNSVZgT8KBpqe5&sz=w400) center/cover no-repeat'}]},
   { q:'brutalist tokyo neon', bg:'linear-gradient(160deg,#0b020f,#180520)', acc:'rgba(180,40,220,.5)', dot:'#a030c8', status:'ULTRA_VIOLET',
-    cards:[{t:'Shinjuku After Midnight',c:'Urban · Tokyo',bg:'url(https://drive.google.com/thumbnail?id=1uLr-cxB7a6A-KyfiNFLauLx_46h_J544&sz=w400) center/cover no-repeat'},{t:'Concrete Cathedral',c:'Architecture · Osaka',bg:'url(https://drive.google.com/thumbnail?id=1IY5OOrFQVg2ZeJqk7DdNSVZgT8KBpqe5&sz=w400) center/cover no-repeat'},{t:'Neon Entropy Vol.7',c:'Abstract · Kyoto',bg:'url(https://drive.google.com/thumbnail?id=1Ec3-kwgqbmYeE8Gvmq7jmxH5PO4nRfdw&sz=w400) center/cover no-repeat'}]},
+    cards:[{t:'Deep Urban Study',c:'Street · Tokyo',bg:'url(https://drive.google.com/thumbnail?id=1kk5DdaBxguorhfazyEWCfYdpqJTtOZBX&sz=w400) center/cover no-repeat'},{t:'Signal & Noise',c:'Abstract · Seoul',bg:'url(https://drive.google.com/thumbnail?id=1d2V_DgvJ55E4z-GflKW1V2rIFbbTLiYm&sz=w400) center/cover no-repeat'},{t:'Ancient Futures II',c:'Historical',bg:'url(https://drive.google.com/thumbnail?id=1uLr-cxB7a6A-KyfiNFLauLx_46h_J544&sz=w400) center/cover no-repeat'}]},
   { q:'wabi-sabi golden dusk', bg:'linear-gradient(160deg,#0f0906,#1e1108)', acc:'rgba(201,168,76,.5)', dot:'#c9a84c', status:'AMBER_DUSK',
-    cards:[{t:'Autumn Impermanence',c:'Nature · Kyoto',bg:'url(https://drive.google.com/thumbnail?id=1RWq2dNH6vdjF0GJ8TVMKRw5LinmnIYBY&sz=w400) center/cover no-repeat'},{t:'The Rust Speaks',c:'Still Life · Barcelona',bg:'url(https://drive.google.com/thumbnail?id=1SSOuHR17oe22ps0QF5xmTeNTTtN5zeNd&sz=w400) center/cover no-repeat'},{t:'Last Light on Stone',c:'Architecture · Tbilisi',bg:'url(https://drive.google.com/thumbnail?id=1JNLVebe-D2fiJCKRoqtBXGuYEG7VUac1&sz=w400) center/cover no-repeat'}]},
+    cards:[{t:'Autumn Impermanence',c:'Fine Art · Kyoto',bg:'url(https://drive.google.com/thumbnail?id=1RWq2dNH6vdjF0GJ8TVMKRw5LinmnIYBY&sz=w400) center/cover no-repeat'},{t:'Rust Speaks',c:'Still Life · Barcelona',bg:'url(https://drive.google.com/thumbnail?id=1lLQ1ArUrf0ry9-KcrZVy8Vs4oYAejQ5f&sz=w400) center/cover no-repeat'},{t:'Last Light On Stone',c:'Architecture · Tbilisi',bg:'url(https://drive.google.com/thumbnail?id=1ySZ58y28COT_inQ7PrjQviM7nvH6z9l0&sz=w400) center/cover no-repeat'}]},
   { q:'ghost in the machine', bg:'linear-gradient(160deg,#020c10,#041622)', acc:'rgba(30,190,220,.45)', dot:'#1ebedd', status:'CYAN_GHOST',
-    cards:[{t:'Signal & Noise III',c:'Digital Art · Global',bg:'url(https://drive.google.com/thumbnail?id=1GHCBZL2GS09eYYNlljxtBKph52K31-FR&sz=w400) center/cover no-repeat'},{t:'Synthetic Memory',c:'Concept · Seoul',bg:'url(https://drive.google.com/thumbnail?id=1-eIn-hi8zZRrOWC5Ejq-tjqVn44tTAhw&sz=w400) center/cover no-repeat'},{t:'Data as Elegy',c:'Mixed Media · Berlin',bg:'url(https://drive.google.com/thumbnail?id=1xMqFreZ2vqQj6bvdISqhUKO4iyrP_YcD&sz=w400) center/cover no-repeat'}]},
+    cards:[{t:'Golden Hour Fragment',c:'Nature · Global',bg:'url(https://drive.google.com/thumbnail?id=14H6hOpZVlGTvdmFTe68YTeiL8HJVC-e5&sz=w400) center/cover no-repeat'},{t:'Picasso & The Peace',c:'Cultural · Paris',bg:'url(https://drive.google.com/thumbnail?id=1GHCBZL2GS09eYYNlljxtBKph52K31-FR&sz=w400) center/cover no-repeat'},{t:'Before The Hour',c:'Documentary · Lagos',bg:'url(https://drive.google.com/thumbnail?id=1CDrnDZae2zAPMluFg6vYp9jDOWfY3kGS&sz=w400) center/cover no-repeat'}]},
 ]
 
 const AFFINITIES = [
@@ -433,49 +440,23 @@ function SensoryDemo() {
   )
 }
 
-// ── ARCH DIAGRAM ──
-function ArchDiagram(){
+// ── FEATURED SHOWCASE (replaces the old architecture diagram) ──
+// Swap any of these 4 IDs for your own picks — one line each, no other changes needed.
+function FeaturedShowcase(){
+  const featured = [
+    '1Qhr5HJyiUOriSc5HO04OpD7YfddXsZaT',
+    '1vk7owPoCATj4CTe9O7I5a-x-QVJ2bPwd',
+    '1wAjR5zST4f0EZzSOFKqeRy5YC8LySmXW',
+    '1Pa6L6fPmaXxj8BAd2obyh5A74Hj4nJc3',
+  ]
   return(
-    <svg viewBox="0 0 820 580" xmlns="http://www.w3.org/2000/svg" style={{width:'100%',height:'auto',overflow:'visible'}}>
-      <defs>
-        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-          <path d="M0,2 L8,5 L0,8 Z" fill="rgba(201,168,76,.3)"/>
-        </marker>
-        <filter id="glow2"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-      </defs>
-      {[[410,84,410,152],[410,222,170,292],[410,222,410,292],[410,222,650,292],[170,362,280,440],[410,362,410,440],[650,362,540,440]].map(([x1,y1,x2,y2],i)=>(
-        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(201,168,76,.14)" strokeWidth="1" strokeDasharray="5 4" markerEnd="url(#arr)"/>
+    <div className="feat-grid">
+      {featured.map(id=>(
+        <div key={id} className="feat-item">
+          <img src={`https://drive.google.com/thumbnail?id=${id}&sz=w800`} alt=""/>
+        </div>
       ))}
-      {['M410,84 L410,152','M410,222 L170,292','M410,222 L410,292','M410,222 L650,292'].map((p,i)=>(
-        <circle key={i} r="2.5" fill={`rgba(201,168,76,${.65-i*.07})`}>
-          <animateMotion dur={`${1.8+i*.3}s`} repeatCount="indefinite" path={p}/>
-        </circle>
-      ))}
-      {/* SOVEREIGN */}
-      <rect x="270" y="24" width="280" height="60" rx="1" fill="rgba(201,168,76,.065)" stroke="rgba(201,168,76,.4)" strokeWidth="1" filter="url(#glow2)"/>
-      <rect x="270" y="24" width="3" height="60" fill="rgba(201,168,76,.55)"/>
-      <text x="410" y="48" textAnchor="middle" fill="#c9a84c" fontFamily="Cinzel,serif" fontSize="11" letterSpacing="4">SOVEREIGN</text>
-      <text x="410" y="67" textAnchor="middle" fill="rgba(201,168,76,.5)" fontFamily="Courier Prime,monospace" fontSize="8" letterSpacing="2">REY TEMPEST · TEMPEST GROUP</text>
-      {/* AI SYSTEM */}
-      <rect x="210" y="152" width="400" height="70" rx="1" fill="rgba(255,255,255,.015)" stroke="rgba(255,255,255,.045)" strokeWidth="1"/>
-      <text x="410" y="177" textAnchor="middle" fill="#d0d0e0" fontFamily="Cinzel,serif" fontSize="10" letterSpacing="3">AI SOVEREIGN SYSTEM</text>
-      <text x="410" y="194" textAnchor="middle" fill="rgba(160,160,190,.6)" fontFamily="Courier Prime,monospace" fontSize="7.5" letterSpacing="1.5">AESTHETIC ENGINE · GOD ANALYTICS · VISION CORE</text>
-      <text x="410" y="210" textAnchor="middle" fill="rgba(201,168,76,.28)" fontFamily="Courier Prime,monospace" fontSize="7" letterSpacing="1.5">STATUS: ONLINE — NO EGO — NO FATIGUE — 24/7</text>
-      {/* 3 modules */}
-      {[{x:60,cx:170,t:'THE LIBRARY',s1:'Aesthetic assets · CC0 + licensed',s2:'No floor drop. Ever.'},{x:300,cx:410,t:'SIGNAL RADIO',s1:'Ambient broadcast · live · curated',s2:'Free at ACCESS tier'},{x:540,cx:650,t:'THE BLOCK',s1:'Limited auctions · expiry dates',s2:'Scarcity as design principle'}].map((m,i)=>(
-        <g key={i}>
-          <rect x={m.x} y="292" width="220" height="70" rx="1" fill="rgba(255,255,255,.013)" stroke="rgba(255,255,255,.035)" strokeWidth="1"/>
-          <text x={m.cx} y="319" textAnchor="middle" fill="#c9a84c" fontFamily="Cinzel,serif" fontSize="9" letterSpacing="2.5">{m.t}</text>
-          <text x={m.cx} y="337" textAnchor="middle" fill="rgba(160,160,190,.55)" fontFamily="Courier Prime,monospace" fontSize="7" letterSpacing="1.5">{m.s1}</text>
-          <text x={m.cx} y="352" textAnchor="middle" fill="rgba(201,168,76,.28)" fontFamily="Courier Prime,monospace" fontSize="7" letterSpacing="1.5">{m.s2}</text>
-        </g>
-      ))}
-      {/* THE WORLD */}
-      <rect x="240" y="440" width="340" height="70" rx="1" fill="rgba(255,255,255,.01)" stroke="rgba(201,168,76,.1)" strokeWidth="1"/>
-      <text x="410" y="467" textAnchor="middle" fill="rgba(201,168,76,.6)" fontFamily="Cinzel,serif" fontSize="10" letterSpacing="3">THE WORLD</text>
-      <text x="410" y="484" textAnchor="middle" fill="rgba(160,160,190,.5)" fontFamily="Courier Prime,monospace" fontSize="7.5" letterSpacing="1.5">Users · Creators · Subscribers</text>
-      <text x="410" y="500" textAnchor="middle" fill="rgba(201,168,76,.22)" fontFamily="Courier Prime,monospace" fontSize="7" letterSpacing="1.5">ACCESS · NOIR · PRESTIGE · OBSIDIAN</text>
-    </svg>
+    </div>
   )
 }
 
@@ -490,6 +471,8 @@ export default function Page(){
   const [fstat,setFstat]=useState<FStat>('idle')
   const [pos,setPos]=useState<number|null>(null)
   const [count,setCount]=useState<number|null>(null)
+  const [memberDisplay,setMemberDisplay]=useState<number|null>(null)
+  const memberDisplayRef=useRef(0)
   const [ferr,setFerr]=useState('')
   const cursorRef=useRef<HTMLDivElement>(null)
   const ptclRef=useRef<HTMLCanvasElement>(null)
@@ -509,8 +492,35 @@ export default function Page(){
   // Typewriter
   useEffect(()=>{if(!lifted)return;let i=0;const id=setInterval(()=>{setEy(EY.slice(0,i+1));i++;if(i>=EY.length)clearInterval(id)},40);return()=>clearInterval(id)},[lifted])
 
-  // Count
-  useEffect(()=>{fetch('/api/waitlist/count').then(r=>r.json()).then(d=>{if(d.count!==undefined)setCount(d.count)}).catch(()=>{})},[])
+  // Live waitlist count — fetch on mount, then keep polling so the number never sits frozen
+  useEffect(()=>{
+    let active=true
+    const fetchCount=()=>{
+      fetch('/api/waitlist/count').then(r=>r.json()).then(d=>{if(active&&d.count!==undefined)setCount(d.count)}).catch(()=>{})
+    }
+    fetchCount()
+    const id=setInterval(fetchCount,45000)
+    return()=>{active=false;clearInterval(id)}
+  },[])
+
+  // Animate the SHADOW MEMBERS stat whenever the live count changes
+  useEffect(()=>{
+    if(count===null)return
+    const start=memberDisplayRef.current
+    const target=count
+    if(start===target){setMemberDisplay(target);return}
+    const dur=900
+    const t0=performance.now()
+    let raf=0
+    const tick=(now:number)=>{
+      const p=Math.min(1,(now-t0)/dur)
+      const val=Math.round(start+(target-start)*p)
+      setMemberDisplay(val)
+      if(p<1){raf=requestAnimationFrame(tick)}else{memberDisplayRef.current=target}
+    }
+    raf=requestAnimationFrame(tick)
+    return()=>cancelAnimationFrame(raf)
+  },[count])
 
   // Cursor + particles + scrollytelling
   useEffect(()=>{
@@ -580,12 +590,12 @@ export default function Page(){
       el.innerHTML=txt.split(' ').map((w,i)=>`<span style="transition-delay:${.05+i*.04}s">${w} </span>`).join('')
     })
 
-    // Stats counter
+    // Stats counter (static facts only — SHADOW MEMBERS is handled by its own live-count effect above)
     const countUp=(el:HTMLElement,target:number,suffix:string='')=>{
       let cur=0;const step=target/60;const id=setInterval(()=>{cur+=step;if(cur>=target){cur=target;clearInterval(id)};el.textContent=Math.floor(cur).toLocaleString()+suffix},25)
     }
     const statObs=new IntersectionObserver(e=>{e.forEach(en=>{if(en.isIntersecting){const el=en.target as HTMLElement;const t=parseInt(el.getAttribute('data-target')||'0');const s=el.getAttribute('data-suffix')||'';countUp(el,t,s);statObs.unobserve(el)}})},{threshold:.3})
-    document.querySelectorAll('.stat-num').forEach(el=>statObs.observe(el))
+    document.querySelectorAll('.stat-num[data-target]').forEach(el=>statObs.observe(el))
 
     return()=>{document.removeEventListener('mousemove',mv);cancelAnimationFrame(aid);cancelAnimationFrame(tid);window.removeEventListener('resize',resize);obs.disconnect();statObs.disconnect()}
   },[lifted])
@@ -681,12 +691,22 @@ export default function Page(){
       {/* ══ STATS BAND ══ */}
       <div className="stats-band sr">
         <div className="stats-inner">
-          {[{t:'7',s:'AESTHETIC TERRITORIES',d:7,sx:''},{t:'72+',s:'SHADOW GALLERY ASSETS',d:72,sx:'+'},{t:'—',s:'SHADOW MEMBERS',d:0,sx:''},{t:'0',s:'ALGORITHMIC COMPROMISES',d:0,sx:''}].map(item=>(
-            <div key={item.s} className="stat-item">
-              <div className="stat-num" data-target={item.d} data-suffix={item.sx}>{item.t}</div>
-              <div className="stat-label">{item.s}</div>
-            </div>
-          ))}
+          <div className="stat-item">
+            <div className="stat-num" data-target={7} data-suffix="">7</div>
+            <div className="stat-label">AESTHETIC TERRITORIES</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-num" data-target={72} data-suffix="+">72+</div>
+            <div className="stat-label">SHADOW GALLERY ASSETS</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-num">{memberDisplay!==null?memberDisplay.toLocaleString():'—'}</div>
+            <div className="stat-label">SHADOW MEMBERS</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-num" data-target={0} data-suffix="">0</div>
+            <div className="stat-label">ALGORITHMIC COMPROMISES</div>
+          </div>
         </div>
       </div>
 
@@ -729,7 +749,8 @@ export default function Page(){
               <div className="sb-t">RESULTS CURATED FOR TRUTH — NOT ENGAGEMENT SCORE</div>
             </div>
           </div>
-          <div className="sr" style={{transitionDelay:'.2s'}}><SensoryDemo/></div>
+          <div className="sr" style={{transitionDelay:'.2
+      <div className="sr" style={{transitionDelay:'.2s'}}><SensoryDemo/></div>
         </div>
       </section>
 
@@ -766,12 +787,12 @@ export default function Page(){
         </div>
       </section>
 
-      {/* ══ ARCH + DNA ══ */}
+      {/* ══ FEATURED + DNA ══ */}
       <section className="dual-section">
         <div className="dual-inner">
           <div>
-            <div className="sec-label sr2">System Architecture</div>
-            <div className="sr" style={{transitionDelay:'.1s'}}><ArchDiagram/></div>
+            <div className="sec-label sr2">Inside The Library</div>
+            <div className="sr" style={{transitionDelay:'.1s'}}><FeaturedShowcase/></div>
           </div>
           <div>
             <div className="sec-label sr2">Aesthetic Spectrum</div>
