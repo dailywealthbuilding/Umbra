@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 
 const PHOTOS = [
   "1tfQeIMrHXpsC6XVya59qMojMq5FdXrAV",
@@ -60,7 +60,8 @@ const VIDEOS = [
 
 type Item = { t: "p" | "v"; id: string }
 
-const ITEMS: Item[] = (() => {
+// Builds the base 3-photos-then-1-video interleaved order
+function buildItems(): Item[] {
   const out: Item[] = []
   let p = 0, v = 0
   while (p < PHOTOS.length || v < VIDEOS.length) {
@@ -68,16 +69,16 @@ const ITEMS: Item[] = (() => {
     if (v < VIDEOS.length) out.push({ t: "v", id: VIDEOS[v++] })
   }
   return out
-})()
+}
 
-// ── Fisher-Yates shuffle — fresh order every page load ──────────────────────
+// Fisher-Yates shuffle
 function shuffle<T>(arr: T[]): T[] {
-  const out = [...arr]
-  for (let i = out.length - 1; i > 0; i--) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[out[i], out[j]] = [out[j], out[i]]
+    ;[a[i], a[j]] = [a[j], a[i]]
   }
-  return out
+  return a
 }
 
 const S = {
@@ -188,10 +189,8 @@ const S = {
 
 export default function Gallery() {
   const [lb, setLb] = useState<Item | null>(null)
-  // Render server-matched order first, then shuffle once mounted —
-  // gives a fresh sequence on every refresh without a hydration mismatch.
-  const [items, setItems] = useState<Item[]>(ITEMS)
-  useEffect(() => { setItems(shuffle(ITEMS)) }, [])
+  // Fresh shuffle every mount — covers hard refresh and most soft navigations back to this page
+  const [items] = useState<Item[]>(() => shuffle(buildItems()))
 
   return (
     <>
