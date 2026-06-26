@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 // ─── Supabase ───────────────────────────────────────────────────────────────
@@ -11,20 +11,19 @@ const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;
 const UPLOAD_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'umbra_unsigned';
 const OR_KEY        = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY!;
 const CORRECT_KEY   = process.env.NEXT_PUBLIC_OBSIDIAN_KEY!;
-// ─── Vision model fallback chain ─────────────────────────────────────────────
-// Tried in order. If one fails (rate limit, CORS, error), next is used.
-// Probability of ALL 10 failing simultaneously: effectively zero.
+
+// ─── Vision model chain ──────────────────────────────────────────────────────
+// nvidia CONFIRMED WORKING — always first. Others are fallback only.
+// To update this list: openrouter.ai/models → filter "free" + "vision"
 const VISION_MODELS = [
-  'google/gemini-2.0-flash-exp:free',        // Google Gemini Flash  — best quality
-  'meta-llama/llama-4-scout:free',            // Meta Llama 4 Scout   — multimodal
-  'qwen/qwen2.5-vl-72b-instruct:free',        // Qwen VL 72B          — excellent vision
-  'meta-llama/llama-4-maverick:free',         // Meta Llama 4 Maverick
-  'qwen/qwen2.5-vl-7b-instruct:free',         // Qwen VL 7B           — fast
-  'google/gemma-3-27b-it:free',               // Google Gemma 3 27B
-  'google/gemma-3-12b-it:free',               // Google Gemma 3 12B
-  'moonshotai/kimi-vl-a3b-thinking:free',     // Kimi VL
-  'microsoft/phi-4-multimodal-instruct:free', // Microsoft Phi-4
-  'nvidia/nemotron-nano-12b-v2-vl:free',      // Nvidia Nemotron      — last resort
+  'nvidia/nemotron-nano-12b-v2-vl:free',      // CONFIRMED — always first
+  'meta-llama/llama-4-scout:free',             // Llama 4 multimodal
+  'meta-llama/llama-4-maverick:free',          // Llama 4 Maverick
+  'qwen/qwen2.5-vl-72b-instruct:free',         // Qwen VL 72B
+  'qwen/qwen2.5-vl-7b-instruct:free',          // Qwen VL 7B
+  'google/gemini-2.0-flash-exp:free',          // Gemini Flash
+  'moonshotai/kimi-vl-a3b-thinking:free',      // Kimi VL
+  'microsoft/phi-4-multimodal-instruct:free',  // Phi-4 multimodal
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,24 +31,13 @@ type Tab    = 'single' | 'bulk';
 type Status = 'pending' | 'uploading' | 'analyzing' | 'ready' | 'publishing' | 'published' | 'error';
 
 interface Meta {
-  title         : string;
-  description   : string;
-  aesthetic_tags: string;
-  mood_tags     : string;
-  origin_region : string;
-  era           : string;
-  tier_required : string;
+  title: string; description: string; aesthetic_tags: string;
+  mood_tags: string; origin_region: string; era: string; tier_required: string;
 }
 
 interface BulkItem {
-  id          : string;
-  file        : File;
-  previewUrl  : string;
-  status      : Status;
-  cloudUrl    : string;
-  thumbUrl    : string;
-  meta        : Meta;
-  errorMsg    : string;
+  id: string; file: File; previewUrl: string; status: Status;
+  cloudUrl: string; thumbUrl: string; meta: Meta; errorMsg: string;
 }
 
 const DEFAULT_META: Meta = {
@@ -58,33 +46,48 @@ const DEFAULT_META: Meta = {
 };
 
 const STATUS_COLOR: Record<Status, string> = {
-  pending   : '#5a5a6a',
-  uploading : '#c9a84c',
-  analyzing : '#c9a84c',
-  ready     : '#4caf87',
-  publishing: '#c9a84c',
-  published : '#3a3a4a',
-  error     : '#cf4c4c',
+  pending: '#5a5a6a', uploading: '#c9a84c', analyzing: '#c9a84c',
+  ready: '#4caf87', publishing: '#c9a84c', published: '#3a3a4a', error: '#cf4c4c',
 };
 
 const TIERS = ['SHADOW', 'NOIR', 'PRESTIGE', 'OBSIDIAN'];
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
+// ─── Helper ───────────────────────────────────────────────────────────────────
+const fileIsVideo = (file: File) => file.type.startsWith('video/');
+
+// ─── Upload to Cloudinary — image OR video ────────────────────────────────────
+// FIX: previously hardcoded /image/upload — now detects resource type.
+// For video files: uses /video/upload and generates a JPEG thumbnail for AI analysis.
 async function uploadToCloudinary(source: File | string): Promise<{ url: string; thumb: string }> {
   const fd = new FormData();
   fd.append('file', source as Blob);
   fd.append('upload_preset', UPLOAD_PRESET);
   fd.append('folder', 'umbra');
 
-  const res  = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: fd });
+  // Detect resource type — string sources (re-analysis) are always image URLs
+  const isVid = source instanceof File && fileIsVideo(source);
+  const resourceType = isVid ? 'video' : 'image';
+
+  const res  = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`,
+    { method: 'POST', body: fd }
+  );
   const data = await res.json();
-  if (!data.secure_url) throw new Error(data.error?.message || 'Cloudinary failed');
-  return {
-    url  : data.secure_url,
-    thumb: data.secure_url.replace('/upload/', '/upload/w_400,q_80/'),
-  };
+  if (!data.secure_url) throw new Error(data.error?.message || 'Cloudinary upload failed');
+
+  // For video: seek to 2 seconds, output JPEG thumbnail for AI analysis and card preview
+  // For image: standard 400px wide optimized thumbnail
+  const thumb = isVid
+    ? data.secure_url
+        .replace('/video/upload/', '/video/upload/w_400,q_80,so_2/')
+        .replace(/\.[^.]+$/, '.jpg')
+    : data.secure_url.replace('/upload/', '/upload/w_400,q_80/');
+
+  return { url: data.secure_url, thumb };
 }
 
+// ─── AI Analysis — always receives an IMAGE url (thumb for video) ─────────────
+// FIX: timeout reduced 12s → 8s, delays 2s → 1s so nvidia at pos.1 is near-instant
 async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: string }> {
   const prompt = `Analyze this image. Return ONLY a JSON object — no markdown, no explanation.
 {"title":"evocative title 4-6 words","description":"one atmospheric sentence sensory language","aesthetic_tags":"2-3 comma-separated from: Dark Luxury, Quiet Architecture, Raw Documentary, Sacred Geometry, Industrial Pastoral, Urban Myth, Coastal Silence, Ritual Space","mood_tags":"3 comma-separated from: Still, Weight, Shadow, Solitude, Reverence, Ancient, Raw, Dusk, Memory, Decay, Silence, Intimacy","origin_region":"region or country implied","era":"2020s","tier_required":"SHADOW or NOIR or PRESTIGE or OBSIDIAN"}`;
@@ -93,22 +96,22 @@ async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: str
     const model = VISION_MODELS[i];
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12000);
+      const timeout = setTimeout(() => controller.abort(), 8000); // was 12000
 
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method : 'POST',
-        signal : controller.signal,
+        method: 'POST',
+        signal: controller.signal,
         headers: {
-          Authorization : `Bearer ${OR_KEY}`,
+          Authorization: `Bearer ${OR_KEY}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://umbra-wine.vercel.app',
-          'X-Title'     : 'UMBRA Sovereign Upload',
+          'X-Title': 'UMBRA Sovereign Upload',
         },
         body: JSON.stringify({
           model,
           max_tokens: 350,
           messages: [{
-            role   : 'user',
+            role: 'user',
             content: [
               { type: 'image_url', image_url: { url: imageUrl } },
               { type: 'text', text: prompt },
@@ -118,7 +121,7 @@ async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: str
       });
 
       clearTimeout(timeout);
-      if (!res.ok) { await new Promise(r => setTimeout(r, 2000)); continue; }
+      if (!res.ok) { await new Promise(r => setTimeout(r, 1000)); continue; } // was 2000
 
       const data = await res.json();
       const raw  = (data.choices?.[0]?.message?.content || '').trim();
@@ -143,31 +146,31 @@ async function analyzeWithAI(imageUrl: string): Promise<{ meta: Meta; model: str
         model: `[${i + 1}/${VISION_MODELS.length}] ${model.split('/')[1]}`,
       };
     } catch {
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 1000)); // was 1500
       continue;
     }
   }
 
-  // All 10 models exhausted — card becomes READY with auto-title so publish never fails
-  const stamp = new Date().toISOString().slice(0,10);
+  const stamp = new Date().toISOString().slice(0, 10);
   return {
-    meta : { ...DEFAULT_META, title: `Vault Asset — ${stamp}`, era: '2020s', tier_required: 'NOIR' },
+    meta: { ...DEFAULT_META, title: `Vault Asset — ${stamp}`, era: '2020s', tier_required: 'NOIR' },
     model: 'manual',
   };
 }
 
+// ─── Publish to Supabase vault ─────────────────────────────────────────────────
 async function publishToVault(cloudUrl: string, thumbUrl: string, meta: Meta) {
   const parse = (s: string) => s.split(',').map(t => t.trim()).filter(Boolean);
   const { error } = await supabase.from('assets').insert({
-    cloudinary_url : cloudUrl,
-    thumbnail_url  : thumbUrl,
-    title          : meta.title,
-    description    : meta.description,
-    aesthetic_tags : parse(meta.aesthetic_tags),
-    mood_tags      : parse(meta.mood_tags),
-    origin_region  : meta.origin_region,
-    era            : meta.era,
-    tier_required  : meta.tier_required,
+    cloudinary_url: cloudUrl,
+    thumbnail_url : thumbUrl,
+    title         : meta.title,
+    description   : meta.description,
+    aesthetic_tags: parse(meta.aesthetic_tags),
+    mood_tags     : parse(meta.mood_tags),
+    origin_region : meta.origin_region,
+    era           : meta.era,
+    tier_required : meta.tier_required,
   });
   if (error) throw error;
 }
@@ -176,12 +179,12 @@ async function publishToVault(cloudUrl: string, thumbUrl: string, meta: Meta) {
 export default function SovereignUpload() {
   const [key,           setKey          ] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
+  const [tab,           setTab          ] = useState<Tab>('single');
 
   useEffect(() => {
     const stored = localStorage.getItem('umbra_sovereign');
     if (stored && stored === CORRECT_KEY) setAuthenticated(true);
   }, []);
-  const [tab,           setTab          ] = useState<Tab>('single');
 
   function handleAuth() {
     if (key === CORRECT_KEY) {
@@ -265,6 +268,7 @@ function Header({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
 // ─── Single Upload ────────────────────────────────────────────────────────────
 function SingleUpload() {
   const [preview,    setPreview   ] = useState('');
+  const [isVidFile,  setIsVidFile ] = useState(false); // FIX: track file type for preview
   const [cloudUrl,   setCloudUrl  ] = useState('');
   const [thumbUrl,   setThumbUrl  ] = useState('');
   const [meta,       setMeta      ] = useState<Meta>({ ...DEFAULT_META });
@@ -273,15 +277,21 @@ function SingleUpload() {
   const [published,  setPublished ] = useState(false);
 
   async function handleFile(file: File) {
+    // FIX: accept video files — was only checking image/*
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) return;
+
     setPreview(URL.createObjectURL(file));
+    setIsVidFile(fileIsVideo(file)); // FIX: track for preview rendering
     setCloudUrl(''); setMeta({ ...DEFAULT_META }); setPublished(false);
-    setProcessing(true); setStatus('Uploading to vault...');
+    setProcessing(true);
+    setStatus(fileIsVideo(file) ? 'Uploading video...' : 'Uploading image...');
 
     try {
       const { url, thumb } = await uploadToCloudinary(file);
       setCloudUrl(url); setThumbUrl(thumb);
-      setStatus('Reading image...');
-      const { meta: m } = await analyzeWithAI(url);
+      setStatus('Analyzing...');
+      // FIX: pass thumb (always a JPEG) not url — videos pass their JPEG thumbnail
+      const { meta: m } = await analyzeWithAI(thumb);
       setMeta(m); setStatus('');
     } catch (e: any) {
       setStatus(`Error: ${e.message}`);
@@ -294,7 +304,9 @@ function SingleUpload() {
     setProcessing(true); setStatus('Publishing...');
     try {
       await publishToVault(cloudUrl, thumbUrl, meta);
-      setPublished(true); setPreview(''); setCloudUrl(''); setMeta({ ...DEFAULT_META }); setStatus('');
+      setPublished(true);
+      setPreview(''); setCloudUrl(''); setMeta({ ...DEFAULT_META }); setStatus('');
+      setIsVidFile(false);
     } catch (e: any) {
       setStatus(`Publish failed: ${e.message}`);
     } finally {
@@ -304,13 +316,24 @@ function SingleUpload() {
 
   function pickFile() {
     const i = document.createElement('input');
-    i.type = 'file'; i.accept = 'image/*';
-    i.onchange = (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) handleFile(f); };
+    i.type = 'file';
+    i.accept = 'image/*,video/*'; // FIX: was 'image/*'
+    i.onchange = (e) => {
+      const f = (e.target as HTMLInputElement).files?.[0];
+      if (f) handleFile(f);
+    };
     i.click();
   }
 
-  const labelStyle = { fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 6 };
-  const inputStyle = { width: '100%', background: '#0a0a0f', border: '1px solid #2a2a3a', color: '#d4d4e0', padding: '10px 12px', fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: 'none', boxSizing: 'border-box' as const };
+  const labelStyle = {
+    fontFamily: "'Courier Prime', monospace", fontSize: 10,
+    color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 6,
+  };
+  const inputStyle = {
+    width: '100%', background: '#0a0a0f', border: '1px solid #2a2a3a',
+    color: '#d4d4e0', padding: '10px 12px', fontFamily: "'DM Sans', sans-serif",
+    fontSize: 13, outline: 'none', boxSizing: 'border-box' as const,
+  };
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
@@ -320,25 +343,57 @@ function SingleUpload() {
         </div>
       )}
 
-      {/* Drop zone */}
+      {/* Drop zone — FIX: accepts image and video */}
       <div
         onDragOver={e => e.preventDefault()}
-        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) handleFile(f); }}
+        onDrop={e => {
+          e.preventDefault();
+          const f = e.dataTransfer.files[0];
+          // FIX: was if (f?.type.startsWith('image/')) — now accepts video too
+          if (f && (f.type.startsWith('image/') || f.type.startsWith('video/'))) {
+            handleFile(f);
+          }
+        }}
         onClick={pickFile}
-        style={{ border: `2px dashed ${preview ? '#c9a84c' : '#2a2a3a'}`, cursor: 'pointer', overflow: 'hidden', minHeight: preview ? 'auto' : 220, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 0.3s', position: 'relative' as const }}
+        style={{
+          border: `2px dashed ${preview ? '#c9a84c' : '#2a2a3a'}`,
+          cursor: 'pointer', overflow: 'hidden',
+          minHeight: preview ? 'auto' : 220,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'border-color 0.3s', position: 'relative' as const,
+        }}
       >
-        {preview
-          ? <img src={preview} alt="" style={{ width: '100%', maxHeight: 420, objectFit: 'cover', display: 'block' }} />
-          : (
-            <div style={{ textAlign: 'center', padding: '60px 40px' }}>
-              <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, color: '#5a5a6a', fontStyle: 'italic', margin: '0 0 8px' }}>Drop image here</p>
-              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 3, margin: 0 }}>OR CLICK TO BROWSE</p>
-            </div>
+        {preview ? (
+          // FIX: render <video> for video files, <img> for images
+          isVidFile ? (
+            <video
+              src={preview}
+              style={{ width: '100%', maxHeight: 420, objectFit: 'cover', display: 'block' }}
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+          ) : (
+            <img src={preview} alt="" style={{ width: '100%', maxHeight: 420, objectFit: 'cover', display: 'block' }} />
           )
-        }
+        ) : (
+          <div style={{ textAlign: 'center', padding: '60px 40px' }}>
+            <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, color: '#5a5a6a', fontStyle: 'italic', margin: '0 0 8px' }}>
+              Drop image or video here
+            </p>
+            <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 3, margin: 0 }}>
+              OR CLICK TO BROWSE — IMAGE + VIDEO
+            </p>
+          </div>
+        )}
       </div>
 
-      {status && <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 11, color: '#c9a84c', letterSpacing: 3, margin: '16px 0 0' }}>{status}</p>}
+      {status && (
+        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 11, color: '#c9a84c', letterSpacing: 3, margin: '16px 0 0' }}>
+          {status}
+        </p>
+      )}
 
       {cloudUrl && !processing && (
         <div style={{ marginTop: 40 }}>
@@ -346,24 +401,44 @@ function SingleUpload() {
             {(['title', 'origin_region', 'aesthetic_tags', 'mood_tags', 'era'] as (keyof Meta)[]).map(field => (
               <div key={field}>
                 <label style={labelStyle}>{field.replace(/_/g, ' ').toUpperCase()}</label>
-                <input type="text" value={meta[field]} onChange={e => setMeta(p => ({ ...p, [field]: e.target.value }))} style={inputStyle} />
+                <input
+                  type="text"
+                  value={meta[field]}
+                  onChange={e => setMeta(p => ({ ...p, [field]: e.target.value }))}
+                  style={inputStyle}
+                />
               </div>
             ))}
             <div>
               <label style={labelStyle}>TIER REQUIRED</label>
-              <select value={meta.tier_required} onChange={e => setMeta(p => ({ ...p, tier_required: e.target.value }))} style={{ ...inputStyle, cursor: 'pointer' }}>
+              <select
+                value={meta.tier_required}
+                onChange={e => setMeta(p => ({ ...p, tier_required: e.target.value }))}
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
                 {TIERS.map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={labelStyle}>DESCRIPTION</label>
-              <textarea value={meta.description} onChange={e => setMeta(p => ({ ...p, description: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+              <textarea
+                value={meta.description}
+                onChange={e => setMeta(p => ({ ...p, description: e.target.value }))}
+                rows={3}
+                style={{ ...inputStyle, resize: 'vertical' }}
+              />
             </div>
           </div>
           <button
             onClick={handlePublish}
             disabled={processing}
-            style={{ marginTop: 24, width: '100%', padding: '16px', background: '#c9a84c', color: '#050507', border: 'none', cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Cinzel', serif", fontSize: 12, letterSpacing: 4, fontWeight: 700, opacity: processing ? 0.5 : 1, transition: 'opacity 0.2s' }}
+            style={{
+              marginTop: 24, width: '100%', padding: '16px',
+              background: '#c9a84c', color: '#050507', border: 'none',
+              cursor: processing ? 'not-allowed' : 'pointer',
+              fontFamily: "'Cinzel', serif", fontSize: 12, letterSpacing: 4, fontWeight: 700,
+              opacity: processing ? 0.5 : 1, transition: 'opacity 0.2s',
+            }}
           >
             PUBLISH TO VAULT
           </button>
@@ -378,11 +453,15 @@ function BulkUpload() {
   const [items,      setItems     ] = useState<BulkItem[]>([]);
   const [processing, setProcessing] = useState(false);
 
+  // FIX: was filtering f.type.startsWith('image/') only — now includes video
   function addFiles(files: FileList | File[]) {
-    const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
+    const arr = Array.from(files).filter(
+      f => f.type.startsWith('image/') || f.type.startsWith('video/')
+    );
     const newItems: BulkItem[] = arr.map(f => ({
       id: Math.random().toString(36).slice(2),
-      file: f, previewUrl: URL.createObjectURL(f),
+      file: f,
+      previewUrl: URL.createObjectURL(f),
       status: 'pending', cloudUrl: '', thumbUrl: '',
       meta: { ...DEFAULT_META }, errorMsg: '',
     }));
@@ -402,11 +481,13 @@ function BulkUpload() {
     try {
       const { url, thumb } = await uploadToCloudinary(item.file);
       update(item.id, { cloudUrl: url, thumbUrl: thumb, status: 'analyzing' });
-      // Fallback chain — never throws, always returns something
-      const { meta, model } = await analyzeWithAI(url);
-      update(item.id, { meta, status: 'ready', errorMsg: model === 'manual' ? 'Fields blank — fill manually' : `Tagged by ${model}` });
+      // FIX: pass thumb not url — for video files, thumb is the JPEG thumbnail
+      const { meta, model } = await analyzeWithAI(thumb);
+      update(item.id, {
+        meta, status: 'ready',
+        errorMsg: model === 'manual' ? 'Fields blank — fill manually' : `Tagged by ${model}`,
+      });
     } catch (e: any) {
-      // Even if Cloudinary upload failed, still mark ready so user can retry
       update(item.id, { status: 'error', errorMsg: e.message });
     }
   }
@@ -426,7 +507,10 @@ function BulkUpload() {
     update(item.id, { status: 'uploading' });
     try {
       const { url, thumb } = await uploadToCloudinary(item.file);
-      update(item.id, { cloudUrl: url, thumbUrl: thumb, status: 'ready', errorMsg: 'Skipped AI — fill fields manually' });
+      update(item.id, {
+        cloudUrl: url, thumbUrl: thumb,
+        status: 'ready', errorMsg: 'Skipped AI — fill fields manually',
+      });
     } catch (e: any) {
       update(item.id, { status: 'error', errorMsg: e.message });
     }
@@ -467,25 +551,22 @@ function BulkUpload() {
     setItems(prev => prev.filter(i => i.status !== 'published'));
   }
 
-  // ── Retry AI on already-uploaded cloudinary URL ───────────────────────────
+  // FIX: retryAI now uses thumbUrl not cloudUrl — for video, cloudUrl is a .mp4 not an image
   async function retryAI(item: BulkItem) {
-    if (!item.cloudUrl) return;
+    const analyzeUrl = item.thumbUrl || item.cloudUrl;
+    if (!analyzeUrl) return;
     update(item.id, { status: 'analyzing', errorMsg: '' });
     try {
-      const { meta, model } = await analyzeWithAI(item.cloudUrl);
+      const { meta, model } = await analyzeWithAI(analyzeUrl);
       update(item.id, {
-        meta,
-        status: 'ready',
-        errorMsg: model === 'manual'
-          ? 'Fields blank — fill manually'
-          : `Tagged by ${model}`,
+        meta, status: 'ready',
+        errorMsg: model === 'manual' ? 'Fields blank — fill manually' : `Tagged by ${model}`,
       });
     } catch (e: any) {
       update(item.id, { status: 'ready', errorMsg: `Retry failed: ${e.message}` });
     }
   }
 
-  // ── Retry all failed AI tags at once ─────────────────────────────────────
   async function retryAllFailed() {
     if (processing) return;
     setProcessing(true);
@@ -504,8 +585,13 @@ function BulkUpload() {
 
   function pickFiles() {
     const i = document.createElement('input');
-    i.type = 'file'; i.accept = 'image/*'; i.multiple = true;
-    i.onchange = (e) => { const f = (e.target as HTMLInputElement).files; if (f) addFiles(f); };
+    i.type = 'file';
+    i.accept = 'image/*,video/*'; // FIX: was 'image/*'
+    i.multiple = true;
+    i.onchange = (e) => {
+      const f = (e.target as HTMLInputElement).files;
+      if (f) addFiles(f);
+    };
     i.click();
   }
 
@@ -519,25 +605,43 @@ function BulkUpload() {
     )
   ).length;
 
-  const labelStyle = { fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 4 };
-  const inputStyle = { width: '100%', background: '#050507', border: '1px solid #2a2a3a', color: '#d4d4e0', padding: '7px 10px', fontFamily: "'DM Sans', sans-serif", fontSize: 12, outline: 'none', boxSizing: 'border-box' as const };
+  const labelStyle = {
+    fontFamily: "'Courier Prime', monospace", fontSize: 9,
+    color: '#5a5a6a', letterSpacing: 2, display: 'block' as const, marginBottom: 4,
+  };
+  const inputStyle = {
+    width: '100%', background: '#050507', border: '1px solid #2a2a3a',
+    color: '#d4d4e0', padding: '7px 10px', fontFamily: "'DM Sans', sans-serif",
+    fontSize: 12, outline: 'none', boxSizing: 'border-box' as const,
+  };
 
   return (
     <div>
-      {/* Drop zone */}
+      {/* Drop zone — FIX: accepts image and video */}
       <div
         onDragOver={e => e.preventDefault()}
-        onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+        onDrop={e => {
+          e.preventDefault();
+          addFiles(e.dataTransfer.files);
+        }}
         onClick={pickFiles}
-        style={{ border: '2px dashed #2a2a3a', padding: '56px 40px', textAlign: 'center', cursor: 'pointer', marginBottom: 32, background: 'rgba(201,168,76,0.02)', transition: 'border-color 0.3s' }}
+        style={{
+          border: '2px dashed #2a2a3a', padding: '56px 40px', textAlign: 'center',
+          cursor: 'pointer', marginBottom: 32, background: 'rgba(201,168,76,0.02)',
+          transition: 'border-color 0.3s',
+        }}
       >
-        <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, color: '#5a5a6a', fontStyle: 'italic', margin: '0 0 8px' }}>Drop multiple images</p>
-        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 3, margin: 0 }}>OR CLICK TO SELECT — NO LIMIT</p>
+        <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, color: '#5a5a6a', fontStyle: 'italic', margin: '0 0 8px' }}>
+          Drop images or videos
+        </p>
+        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 10, color: '#3a3a4a', letterSpacing: 3, margin: 0 }}>
+          OR CLICK TO SELECT — NO LIMIT — IMAGE + VIDEO
+        </p>
       </div>
 
       {items.length > 0 && (
         <>
-          {/* Bulk controls */}
+          {/* Bulk controls — unchanged */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 40, alignItems: 'center', flexWrap: 'wrap' as const }}>
             {pendingCount > 0 && (
               <>
@@ -599,20 +703,39 @@ function BulkUpload() {
                   transition: 'opacity 0.4s',
                 }}
               >
-                {/* Thumbnail */}
+                {/* Thumbnail — FIX: render <video> for video files */}
                 <div style={{ position: 'relative' as const, height: 160, overflow: 'hidden' }}>
-                  <img src={item.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  {fileIsVideo(item.file) ? (
+                    <video
+                      src={item.previewUrl}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={item.previewUrl}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  )}
                   <div style={{ position: 'absolute', top: 8, right: 8, padding: '3px 8px', background: '#050507', fontFamily: "'Courier Prime', monospace", fontSize: 9, letterSpacing: 2, color: STATUS_COLOR[item.status], border: `1px solid ${STATUS_COLOR[item.status]}` }}>
                     {item.status.toUpperCase()}
                   </div>
+                  {/* Video badge */}
+                  {fileIsVideo(item.file) && (
+                    <div style={{ position: 'absolute', bottom: 8, left: 8, padding: '2px 6px', background: 'rgba(5,5,7,0.85)', fontFamily: "'Courier Prime', monospace", fontSize: 8, letterSpacing: 2, color: '#c9a84c' }}>
+                      VIDEO
+                    </div>
+                  )}
                   <button
                     onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))}
                     style={{ position: 'absolute', top: 8, left: 8, width: 22, height: 22, background: 'rgba(5,5,7,0.8)', border: '1px solid #3a3a4a', color: '#7a7a8a', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
                   >
                     ×
                   </button>
-
-                  {/* Progress bar for active states */}
                   {(item.status === 'uploading' || item.status === 'analyzing' || item.status === 'publishing') && (
                     <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: '#1a1a2e' }}>
                       <div style={{ height: '100%', width: '60%', background: '#c9a84c', animation: 'pulse 1.5s ease-in-out infinite' }} />
@@ -623,7 +746,9 @@ function BulkUpload() {
                 {/* Fields */}
                 <div style={{ padding: '14px 16px' }}>
                   {item.errorMsg && (
-                    <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#cf4c4c', letterSpacing: 2, margin: '0 0 10px' }}>{item.errorMsg}</p>
+                    <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#cf4c4c', letterSpacing: 2, margin: '0 0 10px' }}>
+                      {item.errorMsg}
+                    </p>
                   )}
 
                   {(['title', 'aesthetic_tags', 'mood_tags', 'origin_region'] as (keyof Meta)[]).map(field => (
@@ -650,7 +775,6 @@ function BulkUpload() {
                     </select>
                   </div>
 
-                  {/* Per-card action */}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
                     {(item.status === 'pending' || item.status === 'error') && (
                       <>
@@ -670,7 +794,6 @@ function BulkUpload() {
                     )}
                     {item.status === 'ready' && (
                       <>
-                        {/* Retry AI if fields are blank or were skipped */}
                         {(item.errorMsg === 'Fields blank — fill manually' ||
                           item.errorMsg === 'Skipped AI — fill fields manually') && (
                           <button
@@ -689,7 +812,9 @@ function BulkUpload() {
                       </>
                     )}
                     {item.status === 'published' && (
-                      <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#4caf87', letterSpacing: 2 }}>IN THE VAULT</span>
+                      <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 9, color: '#4caf87', letterSpacing: 2 }}>
+                        IN THE VAULT
+                      </span>
                     )}
                   </div>
                 </div>
