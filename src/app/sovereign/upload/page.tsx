@@ -16,14 +16,9 @@ const CORRECT_KEY   = process.env.NEXT_PUBLIC_OBSIDIAN_KEY!;
 // nvidia CONFIRMED WORKING — always first. Others are fallback only.
 // To update this list: openrouter.ai/models → filter "free" + "vision"
 const VISION_MODELS = [
-  'nvidia/nemotron-nano-12b-v2-vl:free',      // CONFIRMED — always first
-  'meta-llama/llama-4-scout:free',             // Llama 4 multimodal
-  'meta-llama/llama-4-maverick:free',          // Llama 4 Maverick
-  'qwen/qwen2.5-vl-72b-instruct:free',         // Qwen VL 72B
-  'qwen/qwen2.5-vl-7b-instruct:free',          // Qwen VL 7B
-  'google/gemini-2.0-flash-exp:free',          // Gemini Flash
-  'moonshotai/kimi-vl-a3b-thinking:free',      // Kimi VL
-  'microsoft/phi-4-multimodal-instruct:free',  // Phi-4 multimodal
+  'nvidia/nemotron-nano-12b-v2-vl:free',   // ← confirmed, always first
+  'google/gemma-4-26b-a4b:free',           // ← Gemma 4 multimodal
+  'nvidia/nemotron-3-nano-omni:free',      // ← Nemotron Omni multimodal
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
