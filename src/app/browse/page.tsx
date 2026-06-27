@@ -19,6 +19,8 @@ type Asset = {
   id: string;
   title: string | null;
   cloudinary_url: string;
+  thumbnail_url: string | null;   // ADD: stored thumbnail (from fixed upload page)
+  file_type: string | null;       // ADD: 'image' | 'video' | 'audio'
   aesthetic_tags: string[] | string | null;
   mood_tags: string[] | string | null;
   tier_required: string;
@@ -31,14 +33,38 @@ type Profile = {
   display_name: string | null;
 };
 
-// Tags arrive as arrays from the DB — never call string methods on them directly
+// ── Tags arrive as arrays from the DB — never call string methods on them directly
 function parseTags(raw: string[] | string | null): string[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.filter(Boolean);
   return raw.split(',').map(t => t.trim()).filter(Boolean);
 }
 
-// ── Shared profile loader ──────────────────────────────────────────────────
+// ── Cloudinary video URL → JPEG thumbnail
+// Works even without thumbnail_url stored in DB.
+// e.g. .../video/upload/v123/file.mp4 → .../video/upload/so_2,f_jpg,w_600/v123/file.jpg
+function getDisplayUrl(asset: Asset): string {
+  // 1. Prefer explicit thumbnail if the fixed upload flow stored one
+  if (asset.thumbnail_url) return asset.thumbnail_url;
+
+  const url = asset.cloudinary_url;
+  if (!url) return '';
+
+  // 2. If this is a Cloudinary video URL, derive a JPEG thumbnail on the fly
+  if (
+    url.includes('/video/upload/') ||
+    asset.file_type === 'video'
+  ) {
+    return url
+      .replace('/video/upload/', '/video/upload/so_2,f_jpg,w_800/')
+      .replace(/\.(mp4|mov|avi|webm|mkv)(\?.*)?$/, '.jpg');
+  }
+
+  // 3. Plain image — use as-is
+  return url;
+}
+
+// ── Shared profile loader
 async function fetchProfile(uid: string): Promise<Profile | null> {
   try {
     const { data } = await supabase
@@ -52,13 +78,13 @@ async function fetchProfile(uid: string): Promise<Profile | null> {
   }
 }
 
-// ── Card — zero JS hover state ─────────────────────────────────────────────
+// ── Card — zero JS hover state (safe for Huawei Y9a)
 function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
-  const raw  = (asset.tier_required ?? 'SHADOW').toUpperCase();
-  // Guard against any malformed values slipping through
-  const tier = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
-  const gold   = '#c9a84c';
+  const raw   = (asset.tier_required ?? 'SHADOW').toUpperCase();
+  const tier  = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
+  const gold  = '#c9a84c';
   const tColor = tier === 'SHADOW' ? '#5a5a6a' : gold;
+  const displayUrl = getDisplayUrl(asset);
 
   const inner = (
     <div style={{
@@ -69,11 +95,11 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
       paddingBottom: '133%',
       display: 'block',
     }}>
-      {/* Image */}
+      {/* Image / Video thumbnail */}
       <div style={{
         position: 'absolute',
         top: 0, right: 0, bottom: 0, left: 0,
-        backgroundImage: `url(${asset.cloudinary_url})`,
+        backgroundImage: displayUrl ? `url(${displayUrl})` : 'none',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         filter: isGated
@@ -81,6 +107,21 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
           : 'brightness(0.85)',
         transform: isGated ? 'scale(1.08)' : 'scale(1)',
       }} />
+
+      {/* Video badge — visible on ungated video assets */}
+      {!isGated && asset.file_type === 'video' && (
+        <div style={{
+          position: 'absolute', top: 10, left: 10,
+          fontSize: 8, letterSpacing: 3,
+          color: 'rgba(240,217,138,0.7)',
+          background: 'rgba(5,5,7,0.75)',
+          border: '1px solid rgba(201,168,76,0.2)',
+          padding: '2px 7px',
+          fontFamily: 'monospace', textTransform: 'uppercase',
+        }}>
+          VIDEO
+        </div>
+      )}
 
       {/* Always-visible title strip */}
       {!isGated && (
@@ -152,7 +193,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
   );
 }
 
-// ── Browse Page ─────────────────────────────────────────────────────────────
+// ── Browse Page
 export default function BrowsePage() {
   const [allAssets,    setAllAssets   ] = useState<Asset[]>([]);
   const [profile,      setProfile     ] = useState<Profile | null>(null);
@@ -164,27 +205,20 @@ export default function BrowsePage() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // ── AUTH: getUser() for initial load → no flicker ─────────────────────────
-  // Pattern: getUser() is a network call that reliably resolves the session.
-  // onAuthStateChange is ONLY for live sign-in / sign-out events afterward.
-  // This stops the INITIAL_SESSION(null) → SIGNED_IN flip-flop.
+  // ── AUTH: getUser() for initial load
   useEffect(() => {
     if (!mounted) return;
     let alive = true;
 
-    // 1. Reliable initial session check
     async function initialLoad() {
       try {
-        // Step 1: getSession() — instant cookie read, no network round-trip.
-        // On a Kenyan mobile connection to EU-WEST-2, this saves 1–3 seconds.
         const { data: { session } } = await supabase.auth.getSession();
         if (!alive) return;
         if (session?.user?.id) {
           const p = await fetchProfile(session.user.id);
           if (alive && p) setProfile(p);
-          if (alive) setProfileReady(true); // unlock UI immediately
+          if (alive) setProfileReady(true);
         }
-        // Step 2: getUser() — background JWT verification with Supabase server.
         const { data: { user } } = await supabase.auth.getUser();
         if (!alive) return;
         if (!session?.user?.id) {
@@ -201,7 +235,6 @@ export default function BrowsePage() {
     }
     initialLoad();
 
-    // 2. Live changes only — ignore INITIAL_SESSION
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!alive) return;
@@ -216,7 +249,6 @@ export default function BrowsePage() {
           const p = await fetchProfile(session.user.id);
           if (alive && p) setProfile(p);
         }
-        // INITIAL_SESSION, USER_UPDATED, PASSWORD_RECOVERY → ignored
       }
     );
 
@@ -226,7 +258,7 @@ export default function BrowsePage() {
     };
   }, [mounted]);
 
-  // ── ASSETS ─────────────────────────────────────────────────────────────────
+  // ── ASSETS — now fetches thumbnail_url and file_type
   useEffect(() => {
     if (!mounted) return;
 
@@ -234,7 +266,7 @@ export default function BrowsePage() {
       try {
         const { data, error } = await supabase
           .from('assets')
-          .select('id,title,cloudinary_url,aesthetic_tags,mood_tags,tier_required,origin_region')
+          .select('id,title,cloudinary_url,thumbnail_url,file_type,aesthetic_tags,mood_tags,tier_required,origin_region')
           .eq('is_active', true)
           .order('created_at', { ascending: false })
           .limit(300);
@@ -285,7 +317,6 @@ export default function BrowsePage() {
         display: 'flex', alignItems: 'center', gap: 16, height: 60,
         flexWrap: 'nowrap',
       }}>
-        {/* UMBRA mark */}
         <Link href="/" style={{
           fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700,
           color: '#c9a84c', letterSpacing: 6, textDecoration: 'none',
@@ -294,7 +325,6 @@ export default function BrowsePage() {
           UMBRA
         </Link>
 
-        {/* Search — full width on mobile, capped on desktop */}
         <input
           type="text"
           value={search}
@@ -309,9 +339,7 @@ export default function BrowsePage() {
           }}
         />
 
-        {/* Nav links — hidden on small screens via minWidth guard */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginLeft: 'auto', flexShrink: 0 }}>
-          {/* Desktop-only nav links */}
           <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginRight: 20 }}>
             <Link href="/drift" style={{
               fontFamily: 'monospace', fontSize: 8, letterSpacing: '0.3em',
@@ -336,7 +364,6 @@ export default function BrowsePage() {
             </Link>
           </div>
 
-          {/* Tier badge */}
           {profileReady && isSovereign && (
             <span style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#c9a84c', marginRight: 14, whiteSpace: 'nowrap' }}>
               ◈ SOVEREIGN
@@ -348,7 +375,6 @@ export default function BrowsePage() {
             </span>
           )}
 
-          {/* Sign in — logged out only */}
           {profileReady && !profile && (
             <Link href="/auth/login" style={{
               fontFamily: 'monospace', fontSize: 9, letterSpacing: 3,
@@ -360,7 +386,6 @@ export default function BrowsePage() {
             </Link>
           )}
 
-          {/* Unlock access — only when not subscribed */}
           {profileReady && (!profile || profile.tier === 'SHADOW') && (
             <Link href="/subscribe" style={{
               fontFamily: 'monospace', fontSize: 9, letterSpacing: 3,
@@ -433,10 +458,10 @@ export default function BrowsePage() {
             gap: 2,
           }}>
             {filtered.map(asset => {
-              const raw     = (asset.tier_required ?? 'SHADOW').toUpperCase();
+              const raw      = (asset.tier_required ?? 'SHADOW').toUpperCase();
               const safeTier = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
-              const lvl     = TIER_ORDER[safeTier];
-              const isGated = !isSovereign && lvl > userTierLevel;
+              const lvl      = TIER_ORDER[safeTier];
+              const isGated  = !isSovereign && lvl > userTierLevel;
               return <AssetCard key={asset.id} asset={asset} isGated={isGated} />;
             })}
           </div>
