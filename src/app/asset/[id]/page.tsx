@@ -17,7 +17,7 @@ type Asset = {
   description: string | null;
   cloudinary_url: string;
   thumbnail_url: string | null;
-  file_type: string | null;          // ADD: determines video vs image display
+  asset_type: string | null;          // FIXED: was file_type — DB column is asset_type
   aesthetic_tags: string[] | string | null;
   mood_tags: string[] | string | null;
   tier_required: string;
@@ -46,7 +46,7 @@ function getDisplayUrl(asset: Asset): string {
   if (asset.thumbnail_url) return asset.thumbnail_url;
   const url = asset.cloudinary_url;
   if (!url) return '';
-  if (url.includes('/video/upload/') || asset.file_type === 'video') {
+  if (url.includes('/video/upload/') || asset.asset_type === 'video') {
     return url
       .replace('/video/upload/', '/video/upload/so_2,f_jpg,w_1200/')
       .replace(/\.(mp4|mov|avi|webm|mkv)(\?.*)?$/, '.jpg');
@@ -170,7 +170,7 @@ function PhoneMockup({
           transition: 'height 0.4s cubic-bezier(.16,1,.3,1)',
         }}>
           {/* Content: real video plays inside mockup */}
-          {asset.file_type === 'video' ? (
+          {asset.asset_type === 'video' ? (
             <video
               src={asset.cloudinary_url}
               autoPlay muted loop playsInline
@@ -301,7 +301,7 @@ export default function AssetPage() {
       try {
         const { data, error } = await supabase
           .from('assets')
-          .select('id,title,description,cloudinary_url,thumbnail_url,file_type,aesthetic_tags,mood_tags,tier_required,origin_region,era,license,download_count')
+          .select('id,title,description,cloudinary_url,thumbnail_url,asset_type,aesthetic_tags,mood_tags,tier_required,origin_region,era,license,download_count')
           .eq('id', id)
           .single();
         if (!error && data) setAsset(data as Asset);
