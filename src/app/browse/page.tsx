@@ -17,7 +17,6 @@ const AESTHETIC_FILTERS = [
 
 type AssetType = 'ALL' | 'IMAGE' | 'VIDEO';
 
-// FIX: column is asset_type not file_type
 type Asset = {
   id: string;
   title: string | null;
@@ -42,7 +41,6 @@ function parseTags(raw: string[] | string | null): string[] {
   return raw.split(',').map(t => t.trim()).filter(Boolean);
 }
 
-// FIX: use asset_type not file_type
 function getDisplayUrl(asset: Asset): string {
   if (asset.thumbnail_url) return asset.thumbnail_url;
   const url = asset.cloudinary_url;
@@ -66,81 +64,121 @@ async function fetchProfile(uid: string): Promise<Profile | null> {
   } catch (_) { return null; }
 }
 
+// ── Asset Card ────────────────────────────────────────────────────────────────
 function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
-  const raw    = (asset.tier_required ?? 'SHADOW').toUpperCase();
-  const tier   = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
-  const gold   = '#c9a84c';
-  const tColor = tier === 'SHADOW' ? '#5a5a6a' : gold;
+  const raw      = (asset.tier_required ?? 'SHADOW').toUpperCase();
+  const tier     = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
+  const gold     = '#c9a84c';
+  const tColor   = tier === 'SHADOW' ? '#5a5a6a' : gold;
   const displayUrl = getDisplayUrl(asset);
-  // FIX: use asset_type not file_type
-  const isVideo = asset.asset_type === 'video';
+  const isVideo  = asset.asset_type === 'video';
 
   const inner = (
     <div style={{
-      position: 'relative', background: '#0a0a0f',
+      position: 'relative',
+      background: '#0a0a0f',
       border: '1px solid rgba(255,255,255,0.04)',
-      overflow: 'hidden', paddingBottom: '133%', display: 'block',
+      overflow: 'hidden',
+      paddingBottom: '133%',
+      display: 'block',
     }}>
+      {/* Background layer — static thumbnail for images, blurred poster for gated */}
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
         backgroundImage: displayUrl ? `url(${displayUrl})` : 'none',
-        backgroundSize: 'cover', backgroundPosition: 'center',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         filter: isGated ? 'blur(18px) brightness(0.3)' : 'brightness(0.85)',
         transform: isGated ? 'scale(1.08)' : 'scale(1)',
       }} />
 
-      {!isGated && isVideo && (
+      {/* VIDEO: autoplay silently over the thumbnail — only if not gated */}
+      {isVideo && !isGated && (
+        <video
+          src={asset.cloudinary_url}
+          autoPlay
+          muted
+          loop
+          playsInline
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover',
+            opacity: 1,
+          }}
+        />
+      )}
+
+      {/* VIDEO badge */}
+      {isVideo && !isGated && (
         <div style={{
-          position: 'absolute', top: 10, left: 10,
-          fontSize: 8, letterSpacing: 3,
-          color: 'rgba(240,217,138,0.8)', background: 'rgba(5,5,7,0.8)',
-          border: '1px solid rgba(201,168,76,0.25)',
-          padding: '2px 7px', fontFamily: 'monospace', textTransform: 'uppercase',
+          position: 'absolute', top: 10, left: 10, zIndex: 3,
+          fontSize: 'clamp(9px, 1.2vw, 11px)', letterSpacing: 3,
+          color: 'rgba(240,217,138,0.9)',
+          background: 'rgba(5,5,7,0.82)',
+          border: '1px solid rgba(201,168,76,0.3)',
+          padding: '3px 8px',
+          fontFamily: 'monospace',
+          textTransform: 'uppercase',
         }}>
           VIDEO
         </div>
       )}
 
+      {/* Title overlay */}
       {!isGated && (
         <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0,
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 3,
           background: 'linear-gradient(transparent, rgba(5,5,7,0.92))',
-          padding: '28px 12px 10px',
+          padding: '32px 14px 12px',
         }}>
           <p style={{
-            margin: 0, fontSize: 11, color: 'rgba(212,212,224,0.85)',
-            fontFamily: 'Georgia, serif', letterSpacing: 0.3,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            margin: 0,
+            fontSize: 'clamp(12px, 1.6vw, 14px)',
+            color: 'rgba(212,212,224,0.9)',
+            fontFamily: 'Georgia, serif',
+            letterSpacing: 0.3,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}>
             {asset.title ?? 'Vault Asset'}
           </p>
         </div>
       )}
 
+      {/* Tier badge */}
       <div style={{
-        position: 'absolute', top: 10, right: 10,
-        fontSize: 9, letterSpacing: 3, color: tColor,
-        background: 'rgba(5,5,7,0.85)', border: `1px solid ${tColor}`,
-        padding: '2px 8px', textTransform: 'uppercase', fontFamily: 'monospace',
+        position: 'absolute', top: 10, right: 10, zIndex: 3,
+        fontSize: 'clamp(9px, 1.2vw, 11px)', letterSpacing: 3,
+        color: tColor,
+        background: 'rgba(5,5,7,0.85)',
+        border: `1px solid ${tColor}`,
+        padding: '3px 9px',
+        textTransform: 'uppercase',
+        fontFamily: 'monospace',
       }}>
         {tier}
       </div>
 
+      {/* Gated overlay */}
       {isGated && (
         <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
+          position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 3,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 10,
         }}>
           <span style={{
-            fontSize: 9, letterSpacing: 3, color: gold,
-            background: 'rgba(5,5,7,0.75)', border: '1px solid rgba(201,168,76,0.4)',
-            padding: '3px 10px', textTransform: 'uppercase', fontFamily: 'monospace',
+            fontSize: 'clamp(10px, 1.3vw, 12px)', letterSpacing: 3,
+            color: gold, background: 'rgba(5,5,7,0.75)',
+            border: '1px solid rgba(201,168,76,0.4)',
+            padding: '4px 12px', textTransform: 'uppercase', fontFamily: 'monospace',
           }}>
             {tier} +
           </span>
           <span style={{
-            fontSize: 9, letterSpacing: 3, color: 'rgba(212,212,224,0.4)',
+            fontSize: 'clamp(10px, 1.3vw, 12px)', letterSpacing: 3,
+            color: 'rgba(212,212,224,0.4)',
             textTransform: 'uppercase', fontFamily: 'monospace',
           }}>
             UNLOCK ACCESS
@@ -158,6 +196,7 @@ function AssetCard({ asset, isGated }: { asset: Asset; isGated: boolean }) {
   );
 }
 
+// ── Browse Page ───────────────────────────────────────────────────────────────
 export default function BrowsePage() {
   const [allAssets,    setAllAssets   ] = useState<Asset[]>([]);
   const [profile,      setProfile     ] = useState<Profile | null>(null);
@@ -212,8 +251,6 @@ export default function BrowsePage() {
       try {
         const { data, error } = await supabase
           .from('assets')
-          // FIX: asset_type not file_type
-          // FIX: removed .eq('is_active', true) — uploaded assets have is_active NULL
           .select('id,title,cloudinary_url,thumbnail_url,asset_type,aesthetic_tags,mood_tags,tier_required,origin_region')
           .order('created_at', { ascending: false })
           .limit(300);
@@ -225,7 +262,6 @@ export default function BrowsePage() {
   }, [mounted]);
 
   const filtered = allAssets.filter(a => {
-    // FIX: use asset_type not file_type
     if (activeType === 'IMAGE' && a.asset_type === 'video') return false;
     if (activeType === 'VIDEO' && a.asset_type !== 'video') return false;
 
@@ -242,8 +278,8 @@ export default function BrowsePage() {
     return true;
   });
 
-  const imageCount = allAssets.filter(a => a.asset_type !== 'video').length;
-  const videoCount = allAssets.filter(a => a.asset_type === 'video').length;
+  const imageCount    = allAssets.filter(a => a.asset_type !== 'video').length;
+  const videoCount    = allAssets.filter(a => a.asset_type === 'video').length;
   const isSovereign   = profile?.is_sovereign === true;
   const userTierLevel = TIER_ORDER[(profile?.tier ?? 'SHADOW').toUpperCase()] ?? 0;
 
@@ -252,19 +288,24 @@ export default function BrowsePage() {
   return (
     <div style={{ minHeight: '100vh', background: '#050507', color: '#d4d4e0' }}>
 
+      {/* ── Header ── */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
         background: 'rgba(5,5,7,0.97)',
         WebkitBackdropFilter: 'blur(20px)', backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(201,168,76,0.07)',
-        padding: '0 20px', display: 'flex', alignItems: 'center', gap: 16, height: 60,
+        padding: '0 20px',
+        display: 'flex', alignItems: 'center', gap: 16, height: 64,
       }}>
         <Link href="/" style={{
-          fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700,
+          fontFamily: 'Georgia, serif',
+          fontSize: 'clamp(16px, 2.2vw, 20px)',
+          fontWeight: 700,
           color: '#c9a84c', letterSpacing: 6, textDecoration: 'none', flexShrink: 0,
         }}>
           UMBRA
         </Link>
+
         <input
           type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search the vault — mood, aesthetic, region..."
@@ -272,49 +313,71 @@ export default function BrowsePage() {
             flex: 1, minWidth: 0, maxWidth: 480,
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(201,168,76,0.12)',
-            padding: '8px 14px', color: '#d4d4e0', fontSize: 13, outline: 'none',
+            padding: '9px 16px',
+            color: '#d4d4e0',
+            fontSize: 'clamp(13px, 1.6vw, 15px)',
+            outline: 'none',
+            fontFamily: 'Georgia, serif',
           }}
         />
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginLeft: 'auto', flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginRight: 20 }}>
             {(['Drift', 'Collections', 'Signal'] as const).map(link => (
               <Link key={link} href={`/${link.toLowerCase()}`} style={{
-                fontFamily: 'monospace', fontSize: 8, letterSpacing: '0.3em',
-                color: 'rgba(152,152,180,0.5)', textDecoration: 'none',
-                textTransform: 'uppercase', whiteSpace: 'nowrap',
+                fontFamily: 'monospace',
+                fontSize: 'clamp(11px, 1.3vw, 13px)',
+                letterSpacing: '0.25em',
+                color: 'rgba(152,152,180,0.55)',
+                textDecoration: 'none',
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
               }}>{link}</Link>
             ))}
           </div>
+
           {profileReady && isSovereign && (
-            <span style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#c9a84c', marginRight: 14, whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 'clamp(11px, 1.3vw, 13px)', letterSpacing: 3, color: '#c9a84c', marginRight: 14, whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
               SOVEREIGN
             </span>
           )}
           {profileReady && profile && !isSovereign && (
-            <span style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: 'rgba(201,168,76,0.6)', marginRight: 14, whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 'clamp(11px, 1.3vw, 13px)', letterSpacing: 3, color: 'rgba(201,168,76,0.6)', marginRight: 14, whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
               {profile.tier}
             </span>
           )}
           {profileReady && !profile && (
             <Link href="/auth/login" style={{
-              fontFamily: 'monospace', fontSize: 9, letterSpacing: 3,
-              color: 'rgba(212,212,224,0.5)', textDecoration: 'none',
-              padding: '6px 12px', border: '1px solid rgba(255,255,255,0.08)', marginRight: 10,
+              fontFamily: 'monospace',
+              fontSize: 'clamp(11px, 1.3vw, 13px)',
+              letterSpacing: 3,
+              color: 'rgba(212,212,224,0.5)',
+              textDecoration: 'none',
+              padding: '7px 14px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              marginRight: 10,
+              textTransform: 'uppercase',
             }}>SIGN IN</Link>
           )}
           {profileReady && (!profile || profile.tier === 'SHADOW') && (
             <Link href="/subscribe" style={{
-              fontFamily: 'monospace', fontSize: 9, letterSpacing: 3,
-              color: '#050507', background: '#c9a84c',
-              textDecoration: 'none', padding: '6px 14px',
+              fontFamily: 'monospace',
+              fontSize: 'clamp(11px, 1.3vw, 13px)',
+              letterSpacing: 3,
+              color: '#050507',
+              background: '#c9a84c',
+              textDecoration: 'none',
+              padding: '7px 16px',
+              textTransform: 'uppercase',
             }}>UNLOCK</Link>
           )}
         </div>
       </header>
 
-      {/* Type filter: ALL | IMAGES | VIDEOS */}
+      {/* ── Type filter: ALL | IMAGES | VIDEOS ── */}
       <div style={{
-        padding: '0 32px', display: 'flex', alignItems: 'center',
+        padding: '0 24px',
+        display: 'flex', alignItems: 'center',
         borderBottom: '1px solid rgba(201,168,76,0.05)',
         background: 'rgba(10,10,15,0.5)',
       }}>
@@ -324,16 +387,21 @@ export default function BrowsePage() {
           const isActive = activeType === t;
           return (
             <button key={t} onClick={() => setActiveType(t)} style={{
-              fontSize: 9, letterSpacing: 3,
-              color: isActive ? '#c9a84c' : 'rgba(212,212,224,0.22)',
-              background: isActive ? 'rgba(201,168,76,0.05)' : 'none', border: 'none',
-              borderBottom: isActive ? '1px solid #c9a84c' : '1px solid transparent',
-              padding: '10px 18px', cursor: 'pointer',
-              fontFamily: 'monospace', textTransform: 'uppercase',
+              fontSize: 'clamp(11px, 1.3vw, 13px)',
+              letterSpacing: 3,
+              color: isActive ? '#c9a84c' : 'rgba(212,212,224,0.28)',
+              background: isActive ? 'rgba(201,168,76,0.05)' : 'none',
+              border: 'none',
+              borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+              padding: '14px 20px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
             }}>
               {label}
               {!loading && count > 0 && (
-                <span style={{ marginLeft: 7, fontSize: 8, color: isActive ? 'rgba(201,168,76,0.45)' : 'rgba(255,255,255,0.12)' }}>
+                <span style={{ marginLeft: 8, fontSize: 'clamp(10px, 1.1vw, 12px)', color: isActive ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.14)' }}>
                   {count}
                 </span>
               )}
@@ -342,50 +410,94 @@ export default function BrowsePage() {
         })}
       </div>
 
-      {/* Aesthetic filter tabs */}
-      <div style={{ borderBottom: '1px solid rgba(201,168,76,0.07)', padding: '0 32px', display: 'flex', overflowX: 'auto' }}>
+      {/* ── Aesthetic filter tabs ── */}
+      <div style={{
+        borderBottom: '1px solid rgba(201,168,76,0.07)',
+        padding: '0 24px',
+        display: 'flex',
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
+      }}>
         {AESTHETIC_FILTERS.map(f => (
           <button key={f} onClick={() => setActiveFilter(f)} style={{
-            fontSize: 10, letterSpacing: 2,
+            fontSize: 'clamp(11px, 1.3vw, 13px)',
+            letterSpacing: 2,
             color: activeFilter === f ? '#c9a84c' : 'rgba(212,212,224,0.4)',
             background: 'none', border: 'none',
-            borderBottom: activeFilter === f ? '1px solid #c9a84c' : '1px solid transparent',
-            padding: '14px 16px', cursor: 'pointer',
+            borderBottom: activeFilter === f ? '2px solid #c9a84c' : '2px solid transparent',
+            padding: '14px 18px', cursor: 'pointer',
             whiteSpace: 'nowrap', fontFamily: 'monospace', textTransform: 'uppercase',
           }}>{f}</button>
         ))}
       </div>
 
-      <main style={{ padding: '40px 32px 80px', maxWidth: 1400, margin: '0 auto' }}>
+      {/* ── Main grid ── */}
+      <main style={{ padding: '36px 24px 80px', maxWidth: 1400, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 28 }}>
-          <p style={{ fontFamily: 'monospace', fontSize: 11, letterSpacing: 4, color: 'rgba(201,168,76,0.5)', margin: 0, textTransform: 'uppercase' }}>
-            {loading ? 'loading...' : `${filtered.length} ${activeType === 'VIDEO' ? 'videos' : activeType === 'IMAGE' ? 'images' : 'pieces'} in the vault`}
+          <p style={{
+            fontFamily: 'monospace',
+            fontSize: 'clamp(11px, 1.3vw, 13px)',
+            letterSpacing: 4,
+            color: 'rgba(201,168,76,0.5)',
+            margin: 0,
+            textTransform: 'uppercase',
+          }}>
+            {loading
+              ? 'loading...'
+              : `${filtered.length} ${activeType === 'VIDEO' ? 'videos' : activeType === 'IMAGE' ? 'images' : 'pieces'} in the vault`}
           </p>
           {!isSovereign && (
-            <Link href="/subscribe" style={{ fontFamily: 'monospace', fontSize: 10, letterSpacing: 3, color: 'rgba(201,168,76,0.6)', textDecoration: 'none' }}>
+            <Link href="/subscribe" style={{
+              fontFamily: 'monospace',
+              fontSize: 'clamp(11px, 1.3vw, 13px)',
+              letterSpacing: 3,
+              color: 'rgba(201,168,76,0.6)',
+              textDecoration: 'none',
+              textTransform: 'uppercase',
+            }}>
               UNLOCK MORE
             </Link>
           )}
         </div>
 
         {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, fontFamily: 'monospace', fontSize: 11, letterSpacing: 4, color: 'rgba(201,168,76,0.3)' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300,
+            fontFamily: 'monospace',
+            fontSize: 'clamp(12px, 1.5vw, 14px)',
+            letterSpacing: 4, color: 'rgba(201,168,76,0.3)', textTransform: 'uppercase',
+          }}>
             ENTERING THE SHADOW...
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 260, gap: 18 }}>
-            <p style={{ fontFamily: 'monospace', fontSize: 11, letterSpacing: 4, color: 'rgba(201,168,76,0.3)', margin: 0, textTransform: 'uppercase', textAlign: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 260, gap: 20 }}>
+            <p style={{
+              fontFamily: 'monospace',
+              fontSize: 'clamp(12px, 1.5vw, 14px)',
+              letterSpacing: 4, color: 'rgba(201,168,76,0.3)', margin: 0, textTransform: 'uppercase', textAlign: 'center',
+            }}>
               Nothing found
             </p>
             <button
               onClick={() => { setActiveType('ALL'); setActiveFilter('ALL'); setSearch(''); }}
-              style={{ fontFamily: 'monospace', fontSize: 9, letterSpacing: 3, color: '#c9a84c', background: 'none', border: '1px solid rgba(201,168,76,0.3)', padding: '8px 18px', cursor: 'pointer', textTransform: 'uppercase' }}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 'clamp(11px, 1.3vw, 13px)',
+                letterSpacing: 3,
+                color: '#c9a84c', background: 'none',
+                border: '1px solid rgba(201,168,76,0.3)',
+                padding: '10px 22px', cursor: 'pointer', textTransform: 'uppercase',
+              }}
             >
               CLEAR FILTERS
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 2 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))',
+            gap: 3,
+          }}>
             {filtered.map(asset => {
               const raw      = (asset.tier_required ?? 'SHADOW').toUpperCase();
               const safeTier = TIER_ORDER[raw] !== undefined ? raw : 'SHADOW';
